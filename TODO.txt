@@ -1,0 +1,261 @@
+Redis Schema
+============
+
+- $base is the queue name
+- $worker is the name of a worker, usually the hostname
+- $jid is a job ID: a unique string; some sort of UUID. If we deny the use of dots they can be used to specify subjobs. We should also not allow slashes to make neater URLs.
+
+- "$base:counter" -> integer primary key
+
+- "$base:pending_jobs" -> list of top-level jobs that are not complete
+- "$base:complete_jobs" -> list of top-level jobs that are complete (errored or not)
+
+- "$base:status_channel" -> channel that receives status changes of jobs
+
+- "$base:workers" -> list of all worker IDs
+- "$base:worker:$worker" -> hash of worker info, such as IP, hostname, PID, starttime, etc.
+
+- "$base:job:$jid" -> hash of job specification
+
+    - "type" -> "shell", "python", "range", "set"
+    - "priority" -> base priority value; higher priorities run first
+    - "requirements" -> JSON encoded requirements: cores, mem, platform, licenses, etc
+
+    - "user" and "group" -> run as these
+    - "cwd" or "pwd" or "chdir" -> run here
+
+    - "description" -> for human consumption
+
+    - "entrypoint" -> for python jobs
+
+    - "status" -> "pending", "success", "error"
+
+    - "last_capture" -> ID of the last capture attempt
+    - "last_active" -> time of last capture or ping
+    - "last_worker" -> worker ID
+
+    - "io_path_hints" -> where this might work, so that the IO prioritizer can work
+
+    - "args" -> for shell or Python
+    - "kwargs" -> for Python
+
+
+- "$base:job:$jid:children" -> list of $jid
+
+
+How to prioritize
+=================
+
+When we start, subscribe to the "$base:new_jobs" queue, then pull all existing pending jobs.
+
+As new jobs are posted (or on start), calculate their invariant scores, and hold them. Consider setting these scores into "$base:job:$jid:scores" so that others can see
+
+Whenever there is a new job, or one finishes, or a pending one will timeout, or HUP, iterate from top to bottom of local list and take the first one that we satisfy the requirements of. This job capture must be atomic.
+
+Each job has a timeout (default to 300 seconds) that allows others to take it over in case it failed. The worker can ping redis periodically (about every half of that time) to assert that the job is still alive.
+
+Priority is per-level only. E.g. astronomical priorities in a sub-job do not affect the scheduling of their parent.
+
+
+Atomic Captures
+===============
+
+Idea 1: "$base:job:$jid:capture_id" is an int of capture attempts. You INCR this then compare to the value in "$base:job:$jid"."capture_id". If the new ID is only one more than the one in the hash, then you won it. You have only a few seconds to update the job and set a "last_active" time.
+
+Idea 2: "$base:job:$jid:lock" is set to when it was locked by its worker. This is set via "SET <key> <worker>:<time> NX EX <timeout>". Unlock with a basic lua script. See: http://redis.io/commands/set
+
+
+Timeouts
+========
+
+The times of the two servers must be accurate. Call redis.time and use that to figure out an offet to our own time so that they are roughly in sync.
+
+
+Curator & Web UI
+================
+
+A curator process removes all logs from redis, and stores jobs once they are done.
+
+"$base:curator" is a hash of info for contacting the curator
+    "host" and "port"
+
+
+Logs are published to "$base:curator_channel", and pushed to "$base:curator_queue" if there wasn't anyone listening to it.
+
+One captures all logs, and stores details of complete jobs once they are done.
+
+- log data chunks are appended to "$base:job:$jid:output" and published to a queue
+- chunk format: "<timestamp> <channel> <data>"
+- common channels are: stdout, stderr, status, progress, pylogging, usage
+- "stdout" and "stderr" channels have format "<index in bytes> data"
+- "pylogging" is Python logging
+- "usage" is periodic cpu and memory usage, IO counts, etc..
+    - stdlib resource and os.times could be helpful
+    - psutil could be super helpful https://code.google.com/p/psutil/
+
+- these are dumped to a log file with data 'string-escape'd.
+
+- http api for retrieving old data and logs
+    /job/$jid
+    /job/$jid/logs
+
+
+Local Execution
+===============
+
+Job specification should be such that it is easy enough to run them locally without falling back on a remote process. Hopefully, it is:
+
+    job = Job(...)
+    job.schedule(priority=1000)
+    # or
+    job.run()
+
+
+Heirarchy
+=========
+
+Stuff like "requirements" are inherited by children if not specified. Then one can make a set of ranges of subjobs and not have to specify that stuff a bajillion times. Perhaps an "inherit=False" could stop that.
+
+
+Name
+====
+
+- rediqueue
+- rediq
+- pyq "pike"
+- quey "queue-y"
+- aquey (ah-kway)
+- aque
+
+
+Unsorted
+========
+
+
+- Queue class is the connection to the server.
+
+    queue.submit(job)
+
+
+- Job class abstracts away all of the storage:
+
+    job.progress(count, total=None, message=None)
+    job.complete(result)
+    job.error(message or exception)
+    job.children() -> list of Jobs
+    job.ping(): this job is still running; don't reschedule it
+    job[name] -> underlying dict-style store
+    job._iter_keys() -> iterate across all keys that this contains in order
+      to delete or back it up
+    
+    job.cancel()
+    job.retry()
+
+- job type is just a callable that takes a Job, registered via entrypoints
+
+    - the successful completion of the callable does not signal success, because it could be used to schedule a background process or similar. OR it could return fiq.Incomplete (or similar) to signal that it isn't done yet.
+
+    - raising an exception does signal an error (opposite of above)
+
+
+- "generic" handler uses pickled "func", "args", and "kwargs", returning into "result" or "exception"
+
+- "reduce" handler repeatedly calls "func" with the "result" of it's children
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+- different queuing/flow methods to join up various jobs
+    - pipe has results flow from one to the next
+    - reduce calls the job once for every dependant result
+
+- `fiq` command-line to queue shell jobs
+    - output specifies dependency for piping, e.g.:
+        a=$(fiq echo hello)
+        b=$(fiq --pipe-from "$a" md5)
+        fiq --wait --results "$b"
+
+- "groups" or "child templates" allow to have jobs inherit from a template (to ease specification of hundreds of similar jobs)
+
+- perhaps every key should be stored in it's full form (with "$base:job:$jid") so that is is easy to recursively remove a job
+
+
+
+
+- it would be totally OK to do this with Postgres!
+
+- tools to look at with significant startup overhead:
+    - REDline
+    - ARC_CMD (Arri debayering)
+    - one of Jon's image processing scripts, e.g.:
+        ~/dev/fidata/hk_dpx_jsrenderpull.py dpxrender_VFX_PULL_030_090913.js | xargs -L24 -P30 ~/dev/fidata/scaler/hk_render_jsdpx.py -j dpxrender_VFX_PULL_030_090913.js
+
+
+- hkmp1 can git the hk1 redis server, and it is likely that the NT MacPros can do the same
+
+- see http://python-rq.org/
+
+- see https://github.com/percolate/redset
+
+- jobs should be able to specify subjobs without actually creating the objects, to simplify stuff such as chunking ranges of timecodes, etc. However, this doesn't make a ton of sense since each subjob will need to have a status in the end. Ergo, the simplest way is for the caller to manually chunk the job as it is specified. But how then can we get seperate statuses for each of the frames? We could do a map-reduce style arangement...
+
+- Go with a whole map-reduce concept for the whole thing? Each job is a map, and each level performs a reduce. Per-frame errors could be propigated all the way to the top level in a format such that when it is restarted, it is ok.
+
+- Different ways of specifying children:
+    - there is a "$base:job:$jid:child_ids" list of child job IDs
+    - "range": there is a "range_spec" key on the job
+    - "argset": there is a "$base:job:$jid:child_args" list of arguments for children
+
+- Python and bash APIs for fetching info about the current job. Communicated via environment variables.
+
+    current_job().top_level.description
+    current_job().set_status('suspend')
+
+- "python_eval" type could have "py_setup", "py_main" and "py_teardown",
+  all of which run in the same locals, and have the job spec as the globals. Then
+  if you specify a list of locals, it can walk across them all processing them, and
+  updating the status of each child
+
+- jobs/subjobs/subsubjobs are traversed in a depth-first manner, and an upper tier may only be captured by a worker if all of the children are complete
+
+- is it possible to have this implemented in a manner so that there isn't a
+  master server, but instead it is ALL through redis?
+
+- have a concurrent.futures interface as well
+
+- priority should have several weights: availible memory and processors (drop to zero if the resources don't exist or starting this job would pull us down past zero), if inputs or outputs lie on the direct RAID or across the NFS (weighted inversely by speed?)
+
+    - priority calculators could be discovered via entrypoints. could expose lua fragments that
+      are concatted together
+    
+    - when looking for new work, get the whole pending list and calculate the
+      scores for whichever ones are NOT in the worker
+
+- subjobs specified directly, or via ranges
+
+- this would be tons easier if we had the "scan" command
+
+- "$base:job:$jid:children" vs "$base:job.children:$jid"
+
+- reporting by timecodes and durations, instead of individual jobs. Then we can do an output status per sequence.
+- ARC_CMD and others may stuff some metadata into the headers such as how many frames were processed in that sequence
+
+- the only non-basic stuff that Jon wants is progress output for both UI updates (e.g. the web UI) and for knowing how far we got if it errored out
+
+- Jon wants to make a modelling tool for each command that predicts what sort of output you will get and check that against what it actually does.
+
+- hook onto Python logging
+
+- the worker will need to run as root
+
+
