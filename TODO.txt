@@ -15,18 +15,8 @@ Redis Schema
 - "$base:workers" -> list of all worker IDs
 - "$base:worker:$worker" -> hash of worker info, such as IP, hostname, PID, starttime, etc.
 
-- "$base:job:$jid" -> hash of job specification
 
-    - "type" -> "shell", "python", "range", "set"
-    - "priority" -> base priority value; higher priorities run first
-    - "requirements" -> JSON encoded requirements: cores, mem, platform, licenses, etc
-
-    - "user" and "group" -> run as these
-    - "cwd" or "pwd" or "chdir" -> run here
-
-    - "description" -> for human consumption
-
-    - "entrypoint" -> for python jobs
+- "$base:job:$jid" -> hash of job metadata
 
     - "status" -> "pending", "success", "error"
 
@@ -34,13 +24,41 @@ Redis Schema
     - "last_active" -> time of last capture or ping
     - "last_worker" -> worker ID
 
-    - "io_path_hints" -> where this might work, so that the IO prioritizer can work
+    - "spec" -> json encoded job specification
 
-    - "args" -> for shell or Python
-    - "kwargs" -> for Python
+        - "type" -> "generic", "shell", "python", "range", "set"
+        - "priority" -> integer base priority value; higher priorities run first
+
+        - "requirements" -> dict of requirements: cores, mem, platform, licenses, etc
+
+        - "dependencies" -> list of jobs which must complete successfully
+        - "children" -> list of child IDs
+
+        - "user" and "group" -> run as these
+        - "cwd" or "pwd" or "chdir" -> run here
+
+        - "description" -> for human consumption
 
 
-- "$base:job:$jid:children" -> list of $jid
+        - "io_path_hints" -> where this might work, so that the IO prioritizer can work
+        
+
+        - "func" -> for "generic" and "callable" jobs
+        - "args" -> for shell or Python
+        - "kwargs" -> for Python
+
+
+Complex Data Structures
+-----------------------
+
+- every value in the job can be '<encoding>:<value>' with encodings:
+    - list/set/hash/etc.: redis lookups
+    - json: json encoded
+    - pickle: latest cPickle
+
+    Alternatively the key can have the subtype, e.g. "list:children" -> redis subkey
+
+- OR just json encode the whole blob, as I don't think we really need to have access to individual parts
 
 
 How to prioritize
@@ -179,11 +197,11 @@ Unsorted
     - pipe has results flow from one to the next
     - reduce calls the job once for every dependant result
 
-- `fiq` command-line to queue shell jobs
+- `aque` command-line to queue shell jobs
     - output specifies dependency for piping, e.g.:
-        a=$(fiq echo hello)
-        b=$(fiq --pipe-from "$a" md5)
-        fiq --wait --results "$b"
+        a=$(aque echo hello)
+        b=$(aque --pipe-from "$a" md5)
+        aque --wait --results "$b"
 
 - "groups" or "child templates" allow to have jobs inherit from a template (to ease specification of hundreds of similar jobs)
 
