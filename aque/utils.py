@@ -1,25 +1,47 @@
 import json
+import cPickle as pickle
+from cPickle import PickleError
 
 
 def encode_if_required(value):
-    """JSON encode if not a string."""
+    """Serialize a value if it isn't a string.
+
+    Will use JSON if it can, falling back to pickling.
+
+    """
     if isinstance(value, basestring):
         return value
     else:
-        return json.dumps(value, separators=(',', ':'))
+        try:
+            return json.dumps(value, separators=(',', ':'))
+        except TypeError:
+            return pickle.dumps(value, protocol=-1)
+
 
 def decode_if_possible(encoded):
-    """JSON decode if it is valid JSON, otherwise return original."""
+    """Unserialize a value if possible.
+
+    Tries pickle.dumps, then json.dumps, then returns the original
+
+    """
+
+    try:
+        return pickle.loads(encoded)
+    except PickleError:
+        pass
+
     try:
         return json.loads(encoded)
     except ValueError:
-        return encoded
+        pass
+
+    return encoded
 
 def encode_values_when_required(input_):
     """JSON encode the values of a dictionary when they are not strings.
 
     :return: A new dictionary.
-    
+
     """
 
     return dict((k, encode_if_required(v)) for k, v in input_.iteritems())

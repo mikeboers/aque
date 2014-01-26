@@ -3,9 +3,14 @@ from . import *
 from aque.utils import *
 
 
+def func_to_encode():
+    pass
+
+
 class TestEncodingUtils(TestCase):
     
     def test_encoding(self):
+
         self.assertEqual(encode_if_required('hello'), 'hello')
         self.assertEqual(encode_if_required(123), '123')
         self.assertEqual(encode_if_required(range(5)), '[0,1,2,3,4]')
@@ -18,6 +23,7 @@ class TestEncodingUtils(TestCase):
             range(5),
             list('abc'),
             dict(int=1, str='hello', list=range(5)),
+            func_to_encode,
         ):
             encoded = encode_if_required(v)
             decoded = decode_if_possible(encoded)
@@ -25,13 +31,14 @@ class TestEncodingUtils(TestCase):
 
     def test_encode_dict(self):
 
-        original = dict(int=1, str='hello', list=range(5))
+        original = dict(int=1, str='hello', list=range(5), func=func_to_encode)
         encoded = encode_values_when_required(original)
 
         self.assertEqual(encoded['int'], '1')
         self.assertEqual(encoded['str'], 'hello')
         self.assertEqual(encoded['list'], '[0,1,2,3,4]')
+        # Can't really check the function here.
 
         decoded = decode_values_when_possible(encoded)
         self.assertEqual(original, decoded)
-        
+
