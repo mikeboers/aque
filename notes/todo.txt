@@ -1,0 +1,7 @@
+Overview
+========
+
+- successful sync jobs with several patterns
+- error handling for sync jobs
+- resuming sync jobs
+- async running

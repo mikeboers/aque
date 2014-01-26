@@ -1,54 +1,3 @@
-Redis Schema
-============
-
-- $base is the queue name
-- $db is the database ID (defaults to 0)
-
-- $worker is the name of a worker, usually the hostname
-- $jid is a job ID: a unique string; some sort of UUID. If we deny the use of dots they can be used to specify subjobs. We should also not allow slashes to make neater URLs.
-
-- "$base:job_counter" -> integer primary key
-
-- "$base:pending_jobs" -> list of top-level jobs that are not complete
-- "$base:complete_jobs" -> list of top-level jobs that are complete (errored or not)
-
-- "$base@$db:job:$jid:status" -> channel that receives status changes of jobs
-
-- "$base:workers" -> list of all worker IDs
-- "$base:worker:$worker" -> hash of worker info, such as IP, hostname, PID, starttime, etc.
-
-
-- "$base:job:$jid" -> hash of job metadata
-
-    - "status" -> "pending", "success", "error"
-
-    - "last_capture" -> ID of the last capture attempt
-    - "last_active" -> time of last capture or ping
-    - "last_worker" -> worker ID
-
-    - "type" -> "generic", "shell", "python", "range", "set"
-    - "priority" -> integer base priority value; higher priorities run first
-
-    - "requirements" -> JSON dict of requirements: cores, mem, platform, licenses, etc
-    - "dependencies" -> JSON list of jobs which must complete successfully
-    - "children" -> JSON list of child IDs
-
-    - "user" and "group" -> run as these
-    - "cwd" or "pwd" or "chdir" -> run here
-
-    - "description" -> for human consumption
-
-    - "duration_hint" -> guess as to duration so that longer jobs can be prioritized
-    - "io_priority_hints" -> JSON list of paths where this job might do IO, so that the IO prioritizer can work
-    
-    - "args" and "kwargs"
-    - OR "package" -> JSON dict of data to pass to handler
-
-        - "func" -> for "generic" and "callable" jobs
-        - "args" -> for shell or Python
-        - "kwargs" -> for Python
-
-
 How to prioritize
 =================
 
@@ -146,6 +95,7 @@ Statuses
     - "error_type" -> a class name
     - "exception" -> an exception
 
+
 API
 ===
 
@@ -170,7 +120,7 @@ Job.execute() -> synchronous execute
 Testing
 =======
 
-For now use the synchonous API. Later figure out how to do it on Redis
+For now use the synchonous API. Later figure out how to do it on Redis.
 
 
 Unsorted
@@ -182,15 +132,13 @@ Unsorted
     queue.submit(job)
 
 
-- DB can be pulled from: rdb.connection_pool.connection_kwargs['db']
-
-
 - Job class abstracts away all of the storage:
 
-    Job._complex_fields = set(('depedencies', 'requirements', ...))
-        determines which fields will need to be json.loads-ed
-    OR Job.schema = dict(dependencies='json', ...)
-
+    Job._field_types = dict(
+        func='callable',
+        etc.
+    )
+    
     job.progress(count, total=None, message=None)
     job.complete(result)
     job.error(message or exception)
