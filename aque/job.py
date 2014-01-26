@@ -1,7 +1,12 @@
 import itertools
+import logging
 import pkg_resources
 
+from aque.utils import decode_callable
 import aque.handlers
+
+
+log = logging.getLogger(__name__)
 
 
 class JobError(Exception):
@@ -67,7 +72,7 @@ class Job(dict):
             except Exception as e:
                 self['status'] = 'error'
                 self['exception'] = e
-                raise e
+                raise
             else:
                 self['status'] = 'success'
 
@@ -77,8 +82,10 @@ class Job(dict):
     def _handle(self):
 
         type_ = self.get('type', 'generic')
+
         handler = aque.handlers.registry.get(type_)
-        
+        handler = decode_callable(handler)
+
         if handler is None:
             for ep in pkg_resources.iter_entry_points('aque_handlers', type_):
                 handler = ep.load()
@@ -87,6 +94,7 @@ class Job(dict):
         if handler is None:
             raise ValueError('no aque handler for type %r' % type_)
 
+        log.debug('handling job %r with %r' % (self['id'], handler))
         handler(self)
 
 

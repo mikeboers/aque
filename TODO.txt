@@ -159,6 +159,10 @@ parent = Job(type='reduce', func=sum, dependencies=children)
 
 q.submit(parent)
 
+current_job() -> proxies to the current job via threading.local()
+
+with context_stack('job', self):
+    # do something with current_job() returning self
 
 Job.execute() -> synchronous execute
 

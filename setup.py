@@ -19,7 +19,7 @@ setup(
     
     entry_points={
         'aque_handlers': [
-            'generic = aque.handlers.generic:main',
+            'generic = aque.handlers.generic:handle_generic',
         ],
     },
 

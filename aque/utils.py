@@ -1,6 +1,8 @@
-import json
-import cPickle as pickle
+from collections import Callable
 from cPickle import PickleError
+import cPickle as pickle
+import json
+import pkg_resources
 
 
 def encode_if_required(value):
@@ -54,3 +56,35 @@ def decode_values_when_possible(input_):
     """
 
     return dict((k, decode_if_possible(v)) for k, v in input_.iteritems())
+
+
+def decode_callable(input_, entrypoint_group='aque_handlers'):
+
+    # 1. If it is callable, pass through.
+    if isinstance(input_, Callable):
+        return input_
+
+    # 2. Try to unpickle it.
+    try:
+        return pickle.loads(input_)
+    except (PickleError, TypeError):
+        pass
+
+    # 3. Try to parse it as "<module_list>:<attr_list>"
+    try:
+        module_name, attr_list = input_.split(':')
+        module = __import__(module_name, from_list=['.'])
+        func = module
+        for attr_name in attr_list.split('.'):
+            func = getattr(func, attr_name)
+        return func
+    except (ValueError, ImportError, AttributeError):
+        pass
+
+    # 4. Try to look it up in the given entrypoint group.
+    for ep in pkg_resources.iter_entry_points(entrypoint_group, input_):
+        return ep.load()
+
+    # 5. Give up!.
+    raise ValueError('could not decode callable from %r' % input_)
+
