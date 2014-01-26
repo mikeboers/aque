@@ -2,15 +2,17 @@ Redis Schema
 ============
 
 - $base is the queue name
+- $db is the database ID (defaults to 0)
+
 - $worker is the name of a worker, usually the hostname
 - $jid is a job ID: a unique string; some sort of UUID. If we deny the use of dots they can be used to specify subjobs. We should also not allow slashes to make neater URLs.
 
-- "$base:counter" -> integer primary key
+- "$base:job_counter" -> integer primary key
 
 - "$base:pending_jobs" -> list of top-level jobs that are not complete
 - "$base:complete_jobs" -> list of top-level jobs that are complete (errored or not)
 
-- "$base:status_channel" -> channel that receives status changes of jobs
+- "$base@$db:job:$jid:status" -> channel that receives status changes of jobs
 
 - "$base:workers" -> list of all worker IDs
 - "$base:worker:$worker" -> hash of worker info, such as IP, hostname, PID, starttime, etc.
@@ -24,47 +26,33 @@ Redis Schema
     - "last_active" -> time of last capture or ping
     - "last_worker" -> worker ID
 
-    - "spec" -> json encoded job specification
+    - "type" -> "generic", "shell", "python", "range", "set"
+    - "priority" -> integer base priority value; higher priorities run first
 
-        - "type" -> "generic", "shell", "python", "range", "set"
-        - "priority" -> integer base priority value; higher priorities run first
+    - "requirements" -> JSON dict of requirements: cores, mem, platform, licenses, etc
+    - "dependencies" -> JSON list of jobs which must complete successfully
+    - "children" -> JSON list of child IDs
 
-        - "requirements" -> dict of requirements: cores, mem, platform, licenses, etc
+    - "user" and "group" -> run as these
+    - "cwd" or "pwd" or "chdir" -> run here
 
-        - "dependencies" -> list of jobs which must complete successfully
-        - "children" -> list of child IDs
+    - "description" -> for human consumption
 
-        - "user" and "group" -> run as these
-        - "cwd" or "pwd" or "chdir" -> run here
-
-        - "description" -> for human consumption
-
-
-        - "io_path_hints" -> where this might work, so that the IO prioritizer can work
-        
+    - "duration_hint" -> guess as to duration so that longer jobs can be prioritized
+    - "io_priority_hints" -> JSON list of paths where this job might do IO, so that the IO prioritizer can work
+    
+    - "args" and "kwargs"
+    - OR "package" -> JSON dict of data to pass to handler
 
         - "func" -> for "generic" and "callable" jobs
         - "args" -> for shell or Python
         - "kwargs" -> for Python
 
 
-Complex Data Structures
------------------------
-
-- every value in the job can be '<encoding>:<value>' with encodings:
-    - list/set/hash/etc.: redis lookups
-    - json: json encoded
-    - pickle: latest cPickle
-
-    Alternatively the key can have the subtype, e.g. "list:children" -> redis subkey
-
-- OR just json encode the whole blob, as I don't think we really need to have access to individual parts
-
-
 How to prioritize
 =================
 
-When we start, subscribe to the "$base:new_jobs" queue, then pull all existing pending jobs.
+When we start, subscribe to the "$base@$db:status_changes" queue, then pull all existing pending jobs.
 
 As new jobs are posted (or on start), calculate their invariant scores, and hold them. Consider setting these scores into "$base:job:$jid:scores" so that others can see
 
@@ -146,6 +134,41 @@ Name
 - aque
 
 
+Statuses
+========
+
+"pending" -> job has not run yet
+
+"success" -> job has run and results may be in "result"
+
+"error" -> job errored and some of the following may be set:
+    - "error" -> a message
+    - "error_type" -> a class name
+    - "exception" -> an exception
+
+API
+===
+
+from redis import Redis
+from aque import Queue
+
+q = Queue(Redis())
+
+children = [Job(type='python', func=str, args=(i, )) for i in range(5)]
+parent = Job(type='reduce', func=sum, dependencies=children)
+
+q.submit(parent)
+
+
+Job.execute() -> synchronous execute
+
+
+Testing
+=======
+
+For now use the synchonous API. Later figure out how to do it on Redis
+
+
 Unsorted
 ========
 
@@ -155,7 +178,14 @@ Unsorted
     queue.submit(job)
 
 
+- DB can be pulled from: rdb.connection_pool.connection_kwargs['db']
+
+
 - Job class abstracts away all of the storage:
+
+    Job._complex_fields = set(('depedencies', 'requirements', ...))
+        determines which fields will need to be json.loads-ed
+    OR Job.schema = dict(dependencies='json', ...)
 
     job.progress(count, total=None, message=None)
     job.complete(result)
@@ -171,9 +201,7 @@ Unsorted
 
 - job type is just a callable that takes a Job, registered via entrypoints
 
-    - the successful completion of the callable does not signal success, because it could be used to schedule a background process or similar. OR it could return fiq.Incomplete (or similar) to signal that it isn't done yet.
-
-    - raising an exception does signal an error (opposite of above)
+    The successful completion of the callable does not signal success because it could be used to schedule a background process. Raising an exception does, however, signal an error.
 
 
 - "generic" handler uses pickled "func", "args", and "kwargs", returning into "result" or "exception"
@@ -181,6 +209,10 @@ Unsorted
 - "reduce" handler repeatedly calls "func" with the "result" of it's children
 
 
+- "children" are subjobs, while "dependencies" are others parts of a pipeline
+
+- local, syncronous execution first makes sure the dependencies are good, then
+  it's children, then itself
 
 
 

@@ -1,3 +1,7 @@
+import grp
+import os
+import pwd
+
 from aque.job import Job
 
 
@@ -20,6 +24,15 @@ class Queue(object):
 
         if not isinstance(job, Job):
             job = Job(job)
+
+        user = pwd.getpwuid(os.getuid())
+        group = grp.getgrgid(user.pw_gid)
+
+        job.setdefaults(
+            priority=1000,
+            user=user.pw_name,
+            group=group.gr_name,
+        )
 
         id_num = self.redis.incr(self._format('job_counter'))
 
