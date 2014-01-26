@@ -20,6 +20,7 @@ setup(
     entry_points={
         'aque_handlers': [
             'generic = aque.handlers.generic:handle_generic',
+            'reduce_children = aque.handlers.reduce:reduce_children',
         ],
     },
 

@@ -16,6 +16,7 @@ class JobError(Exception):
 class Job(dict):
 
     def __init__(self, *args, **kwargs):
+
         for x in itertools.chain(args, (kwargs, )):
             self.update(x)
 
@@ -31,10 +32,14 @@ class Job(dict):
                 res[k] = self.setdefault(k, v)
         return res
 
-    def _raise_if_errored(self, jid=None):
+    def result(self):
 
-        if self.get('status') != 'error':
-            return
+        status = self.get('status')
+
+        if status == 'pending':
+            raise ValueError('job is pending')
+        if status == 'success':
+            return self.get('result')
 
         exc = self.get('exception')
         if exc:
@@ -48,51 +53,59 @@ class Job(dict):
 
     def error(self, message):
         self['status'] = 'error'
-        self['error'] = str(message)
-        raise JobError(message)
+        self['error'] = message
 
     def success(self, result=None):
         self['status'] = 'success'
         self['result'] = result
 
+    def dependencies(self):
+        res = []
+        for x in self.get('dependencies', ()):
+            if not isinstance(x, Job):
+                x = Job(x)
+            res.append(x)
+        return res
+
+    def children(self):
+        res = []
+        for x in self.get('children', ()):
+            if not isinstance(x, Job):
+                x = Job(x)
+            res.append(x)
+        return res
+
     def run(self, default_id='main'):
 
         jid = self.setdefault('id', default_id)
-        self._raise_if_errored(jid)
+        self['status'] == 'pending'
 
-        if self['status'] == 'pending':
+        for i, job in enumerate(self.dependencies()):
+            job.run(default_id='{}.dep[{}]'.format(jid, i))
+        for i, job in enumerate(self.children()):
+            job.run(default_id='{}.child[{}]'.format(jid, i))
 
-            for i, job in enumerate(self.get('dependencies', ())):
-                job.run(default_id='{}.dep[{}]'.format(jid, i))
-            for i, job in enumerate(self.get('children', ())):
-                job.run(default_id='{}.child[{}]'.format(jid, i))
+        try:
+            self._run()
+        except Exception as e:
+            self['status'] = 'error'
+            if e.args:
+                self['error'] = e.args[0]
+            self['error_type'] = e.__class__.__name__
+            self['exception'] = e
+            raise
+        else:
+            self['status'] = 'success'
+            return self.setdefault('result', None)
 
-            try:
-                self._handle()
-            except Exception as e:
-                self['status'] = 'error'
-                self['exception'] = e
-                raise
-            else:
-                self['status'] = 'success'
-
-        if self['status'] == 'success':
-            return self.get('result')
-
-    def _handle(self):
-
-        type_ = self.get('type', 'generic')
-
-        handler = aque.handlers.registry.get(type_)
+    def _run(self):
+        
+        job_type = self.get('type', 'generic')
+        handler = aque.handlers.registry.get(job_type, job_type)
         handler = decode_callable(handler)
 
         if handler is None:
-            for ep in pkg_resources.iter_entry_points('aque_handlers', type_):
-                handler = ep.load()
-                break
-
-        if handler is None:
-            raise ValueError('no aque handler for type %r' % type_)
+            raise ValueError('no aque handler for type %r' % job_type)
 
         log.debug('handling job %r with %r' % (self['id'], handler))
         handler(self)
