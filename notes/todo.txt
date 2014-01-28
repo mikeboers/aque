@@ -1,7 +1,10 @@
 Overview
 ========
 
-- successful sync jobs with several patterns
+- sync jobs could spawn threads, so Job.run() should have a timeout?
+    - start all of the dependencies and children, and then wait for them all to be non-pending
+    - will need to move the linearize logic into the run method
+- only retry jobs that errored; re-use successful results
 - error handling for sync jobs
 - resuming sync jobs
 - async running

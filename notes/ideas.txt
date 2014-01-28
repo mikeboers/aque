@@ -55,17 +55,6 @@ One captures all logs, and stores details of complete jobs once they are done.
     /job/$jid/logs
 
 
-Local Execution
-===============
-
-Job specification should be such that it is easy enough to run them locally without falling back on a remote process. Hopefully, it is:
-
-    job = Job(...)
-    job.schedule(priority=1000)
-    # or
-    job.run()
-
-
 Heirarchy
 =========
 
@@ -79,14 +68,17 @@ Name
 - rediq
 - pyq "pike"
 - quey "queue-y"
-- aquey (ah-kway)
-- aque
-
+- AQuey (ah-kway)
+- AQue
+- YaQ (Yet Another Queue)
+- Yak (Yet Another Kueue)
 
 Statuses
 ========
 
 "pending" -> job has not run yet
+
+"paused" -> job had not run, and should not run
 
 "success" -> job has run and results may be in "result"
 
@@ -99,22 +91,8 @@ Statuses
 API
 ===
 
-from redis import Redis
-from aque import Queue
-
-q = Queue(Redis())
-
-children = [Job(type='python', func=str, args=(i, )) for i in range(5)]
-parent = Job(type='reduce', func=sum, dependencies=children)
-
-q.submit(parent)
-
+from aque import current_job
 current_job() -> proxies to the current job via threading.local()
-
-with context_stack('job', self):
-    # do something with current_job() returning self
-
-Job.execute() -> synchronous execute
 
 
 Testing
@@ -125,6 +103,12 @@ For now use the synchonous API. Later figure out how to do it on Redis.
 
 Unsorted
 ========
+
+
+- "args" value of "children" assembles args from results of children, and "dependencies" is similar
+    - should this create `args=child_results` or `args=[child_results]`?
+
+- job.get
 
 
 - Queue class is the connection to the server.
@@ -138,18 +122,23 @@ Unsorted
         func='callable',
         etc.
     )
+
+    job[name] -> underlying dict-style store
+    job.attr(name) -> "{attr}_func" gets called or "{attr}_expr" gets evaluated
     
-    job.progress(count, total=None, message=None)
+    # Sync and async API.
     job.complete(result)
     job.error(message or exception)
     job.children() -> list of Jobs
+
+    # For async handlers only.
+    job.progress(count, max=None, message=None)
     job.ping(): this job is still running; don't reschedule it
-    job[name] -> underlying dict-style store
-    job._iter_keys() -> iterate across all keys that this contains in order
-      to delete or back it up
-    
+
+    # For async schedulers.
     job.cancel()
-    job.retry()
+    job.retry(recursive=False)
+
 
 - job type is just a callable that takes a Job, registered via entrypoints
 
