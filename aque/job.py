@@ -34,6 +34,7 @@ class Job(dict):
     def __hash__(self):
         return id(self)
 
+
     def setdefaults(self, *args, **kwargs):
         res = {}
         for x in itertools.chain(args, (kwargs, )):

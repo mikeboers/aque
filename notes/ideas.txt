@@ -104,17 +104,26 @@ For now use the synchonous API. Later figure out how to do it on Redis.
 Unsorted
 ========
 
+- does job.error() raise an exception?
+
+- add "class" to job to specify the job class; is "type" and "class" then confusing?
+  - "handler" and "class"
+  - "processor" and "class"
+  - "prototype" and "type"
+  - "dispatcher" and "type"
 
 - "args" value of "children" assembles args from results of children, and "dependencies" is similar
-    - should this create `args=child_results` or `args=[child_results]`?
+    - same as: func(*(child.result() for child in self.children))
 
-- job.get
+- should children and dependencies actually be functions so that children can be determined at runtime?
+  This would allow for a job's children to depend upon its dependencies. How could this possibly
+  be done so that the workers would be able to figure it out themselves?
+    - the job class would need to assert that multiple calls to generating children would result
+      in exactly the same children. Then the various workers would take the children as existing
+      even though they may not be backed in the DB.
+    - job.backfill() would pull missing data from Redis, and job.update() could pull updates from Redis
 
-
-- Queue class is the connection to the server.
-
-    queue.submit(job)
-
+- job.__getitem__ could eval 'attr.func' and 'attr.expr' before looking for 'attr'
 
 - Job class abstracts away all of the storage:
 
@@ -143,12 +152,6 @@ Unsorted
 - job type is just a callable that takes a Job, registered via entrypoints
 
     The successful completion of the callable does not signal success because it could be used to schedule a background process. Raising an exception does, however, signal an error.
-
-
-- "generic" handler uses pickled "func", "args", and "kwargs", returning into "result" or "exception"
-
-- "reduce" handler repeatedly calls "func" with the "result" of it's children
-
 
 - "children" are subjobs, while "dependencies" are others parts of a pipeline
 
