@@ -74,20 +74,18 @@ class Job(dict):
         self['result'] = result
 
     def dependencies(self):
-        res = []
-        for x in self.get('dependencies', ()):
+        subs = self.setdefault('dependencies', [])
+        for i, x in enumerate(subs):
             if not isinstance(x, Job):
-                x = Job(x)
-            res.append(x)
-        return res
+                subs[i] = Job(x)
+        return subs
 
     def children(self):
-        res = []
-        for x in self.get('children', ()):
+        subs = self.setdefault('children', [])
+        for i, x in enumerate(subs):
             if not isinstance(x, Job):
-                x = Job(x)
-            res.append(x)
-        return res
+                subs[i] = Job(x)
+        return subs
 
     def run(self, default_id='main'):
 
