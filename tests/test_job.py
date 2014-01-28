@@ -3,7 +3,7 @@ import functools
 from . import *
 
 
-class TestJobs(TestCase):
+class TestJobBasics(TestCase):
 
     def test_children_mutability(self):
         parent = Job()
@@ -11,6 +11,18 @@ class TestJobs(TestCase):
         parent.children.append(child)
         self.assertEqual(len(parent.children), 1)
         self.assertIs(parent.children[0], child)
+
+    def test_incomplete_results(self):
+        job = Job()
+        self.assertRaises(JobIncomplete, job.result)
+
+    def test_error_results(self):
+        job = Job()
+        job.error('dummy')
+        self.assertRaises(JobError, job.result)
+
+
+class TestOrder(TestCase):
 
     def test_branch(self):
 

@@ -41,6 +41,10 @@ class Job(dict):
                 res[k] = self.setdefault(k, v)
         return res
 
+    @property
+    def status(self):
+        return self.setdefault('status', 'pending')
+
     def result(self):
         """Retrieve the results of running this job.
 
@@ -51,23 +55,21 @@ class Job(dict):
 
         """
 
-        status = self.get('status')
-
-        if status == 'success':
+        if self.status == 'success':
             return self.get('result')
 
-        elif status == 'error':
+        elif self.status == 'error':
             exc = self.get('exception')
             if exc:
                 raise exc
-            message = '{} from {}'.format(self.get('error', 'unknown error'), jid)
+            message = '{} from {}'.format(self.get('error', 'unknown'), self.get('id', 'unknown'))
             type_ = self.get('error_type', JobError)
             if isinstance(type_, basestring):
                 type_ = getattr(__builtins__, type_, JobError)
             raise type_(message)
 
         else:
-            raise JobIncomplete('job is %s' % status)
+            raise JobIncomplete('job is %s' % self.status)
 
     def error(self, message):
         """Signal that the job has errored while running."""
