@@ -9,8 +9,11 @@ import aque.handlers
 log = logging.getLogger(__name__)
 
 
+class JobIncomplete(Exception):
+    """Raised by :meth:`Job.result` when the job did not complete."""
+
 class JobError(Exception):
-    pass
+    """Raised by :meth:`Job.result` when the job errored without raised an exception."""
 
 
 class Job(dict):
@@ -33,29 +36,40 @@ class Job(dict):
         return res
 
     def result(self):
+        """Retrieve the results of running this job.
+
+        :returns: The result of running the job.
+        :raises: :class:`JobIncomplete` if incomplete, 
+            :class:`JobError` if the job errored,
+            or any exception that the execution of the job may have raised.
+
+        """
 
         status = self.get('status')
 
-        if status == 'pending':
-            raise ValueError('job is pending')
         if status == 'success':
             return self.get('result')
 
-        exc = self.get('exception')
-        if exc:
-            raise exc
+        elif status == 'error':
+            exc = self.get('exception')
+            if exc:
+                raise exc
+            message = '{} from {}'.format(self.get('error', 'unknown error'), jid)
+            type_ = self.get('error_type', JobError)
+            if isinstance(type_, basestring):
+                type_ = getattr(__builtins__, type_, JobError)
+            raise type_(message)
 
-        message = '{} from {}'.format(self.get('error', 'unknown error'), jid)
-        type_ = self.get('error_type', JobError)
-        if isinstance(type_, basestring):
-            type_ = getattr(__builtins__, type_, JobError)
-        raise type_(message)
+        else:
+            raise JobIncomplete('job is %s' % status)
 
     def error(self, message):
+        """Signal that the job has errored while running."""
         self['status'] = 'error'
         self['error'] = message
 
     def complete(self, result=None):
+        """Signal that the job has completed running."""
         self['status'] = 'success'
         self['result'] = result
 

@@ -1,15 +1,16 @@
-.. AQue documentation master file, created by
-   sphinx-quickstart on Tue Jan 28 10:19:37 2014.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-Welcome to AQue's documentation!
+AQue: (Another async work Queue)
 ================================
+
+AQue is a Python package to allow one to define a :abbr:`DAG (Directed Acyclic Graph)` of work that may be executed directly, or asynchronously on a set of servers.
+
+
 
 Contents:
 
 .. toctree::
    :maxdepth: 2
+
+   job
 
 
 
