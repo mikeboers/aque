@@ -28,6 +28,9 @@ class Job(dict):
             status='pending',
         )
 
+    def __hash__(self):
+        return id(self)
+
     def setdefaults(self, *args, **kwargs):
         res = {}
         for x in itertools.chain(args, (kwargs, )):
@@ -87,28 +90,40 @@ class Job(dict):
                 subs[i] = Job(x)
         return subs
 
-    def run(self, default_id='main'):
+    def _assert_graph_ids(self, root='main', visited=None):
 
-        jid = self.setdefault('id', default_id)
-        self['status'] == 'pending'
+        visited = visited or set()
+        if self in visited:
+            return
+        visited.add(self)
 
-        for i, job in enumerate(self.dependencies()):
-            job.run(default_id='{}.dep[{}]'.format(jid, i))
-        for i, job in enumerate(self.children()):
-            job.run(default_id='{}.child[{}]'.format(jid, i))
+        jid = self.setdefault('id', root)
+        for i, dep in enumerate(self.dependencies()):
+            dep._assert_graph_ids('{}.dep-{}'.format(jid, i), visited)
+        for i, child in enumerate(self.children()):
+            child._assert_graph_ids('{}.child-{}'.format(jid, i), visited)
 
-        try:
-            self._run()
-        except Exception as e:
-            self['status'] = 'error'
-            if e.args:
-                self['error'] = e.args[0]
-            self['error_type'] = e.__class__.__name__
-            self['exception'] = e
-            raise
-        else:
-            self['status'] = 'success'
-            return self.setdefault('result', None)
+    def _linearized(self, visited=None):
+
+        visited = visited or set()
+        if self in visited:
+            return
+        visited.add(self)
+
+        for x in self.dependencies():
+            for y in x._linearized(visited):
+                yield y
+        for x in self.children():
+            for y in x._linearized(visited):
+                yield y
+
+        yield self
+
+    def run(self):
+        self._assert_graph_ids()
+        for job in self._linearized():
+            job._run()
+        return self.setdefault('result', None)
 
     def _run(self):
 
@@ -120,7 +135,16 @@ class Job(dict):
             raise ValueError('no aque handler for type %r' % job_type)
 
         log.debug('handling job %r with %r' % (self['id'], handler))
-        handler(self)
+        
+        try:
+            handler(self)
+        except Exception as e:
+            self['status'] = 'error'
+            if e.args:
+                self['error'] = e.args[0]
+            self['error_type'] = e.__class__.__name__
+            self['exception'] = e
+            raise
 
 
 
