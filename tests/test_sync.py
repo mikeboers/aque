@@ -20,4 +20,3 @@ class TestSync(TestCase):
         res = job.run()
 
         self.assertEqual(res, 1 + 4 + 9 + 16)
-

@@ -88,3 +88,50 @@ def decode_callable(input_, entrypoint_group='aque_handlers'):
     # 5. Give up!.
     raise ValueError('could not decode callable from %r' % input_)
 
+
+def eval_expr_or_func(src, globals_, locals_=None, filename=None):
+
+    if filename is None:
+        filename = '<string:%s>' % (src.encode('string-escape'))
+
+    lines = src.strip().splitlines()
+    if len(lines) > 1:
+        # Surely I can create a function object directly with a compiled code
+        # object, but I couldn't quit figure it out in the time that I allowed.
+        # Ergo, we are evalling strings. Sorry.
+        src = 'def __expr__():\n' + '\n'.join('\t' + line for line in lines)
+        locals_ = locals_ if locals_ is not None else {}
+        code = compile(src, filename, 'exec')
+        eval(code, globals_, locals_)
+        return locals_['__expr__']()
+    else:
+        code = compile(lines[0], filename, 'eval')
+        return eval(code, globals_)
+
+
+class ExprDict(dict):
+
+    def __getitem__(self, key):
+
+        try:
+            meth = super(ExprDict, self).__getitem__(key + '.meth')
+        except KeyError:
+            pass
+        else:
+            return meth(self)
+
+        try:
+            func = super(ExprDict, self).__getitem__(key + '.func')
+        except KeyError:
+            pass
+        else:
+            return func()
+
+        try:
+            expr = super(ExprDict, self).__getitem__(key + '.expr')
+        except KeyError:
+            pass
+        else:
+            return eval_expr_or_func(expr, self, {}, key + '.expr')
+
+        return super(ExprDict, self).__getitem__(key)
