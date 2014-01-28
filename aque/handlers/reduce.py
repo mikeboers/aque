@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 def reduce_children(job):
 
     func = decode_callable(job.get('func'))
-    sequence = [child.result() for child in job.children()]
+    sequence = [child.result() for child in job.children]
     try:
         args = (job['initial'], )
     except:
