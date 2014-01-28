@@ -81,7 +81,6 @@ class Job(dict):
         self['status'] = 'success'
         self['result'] = result
 
-    @property
     def dependencies(self):
         subs = self.setdefault('dependencies', [])
         for i, x in enumerate(subs):
@@ -89,7 +88,6 @@ class Job(dict):
                 subs[i] = Job(x)
         return subs
 
-    @property
     def children(self):
         subs = self.setdefault('children', [])
         for i, x in enumerate(subs):
@@ -108,9 +106,9 @@ class Job(dict):
         jid = (base + '.' if base else '') + str(index)
         jid = self.setdefault('id', jid)
 
-        for i, dep in enumerate(self.dependencies):
+        for i, dep in enumerate(self.dependencies()):
             dep.assert_graph_ids(base, index+1, _visited)
-        for i, child in enumerate(self.children):
+        for i, child in enumerate(self.children()):
             child.assert_graph_ids(jid, 1, _visited)
 
     def _iter_linearized(self, _visited=None):
@@ -124,10 +122,10 @@ class Job(dict):
         _visited.add((self, 'incomplete'))
         _visited.add(self)
 
-        for x in self.dependencies:
+        for x in self.dependencies():
             for y in x._iter_linearized(_visited):
                 yield y
-        for x in self.children:
+        for x in self.children():
             for y in x._iter_linearized(_visited):
                 yield y
 
