@@ -97,7 +97,7 @@ class Job(dict):
                 subs[i] = Job(x)
         return subs
 
-    def assert_graph_ids(self, root='main', _visited=None):
+    def assert_graph_ids(self, base=None, index=1, _visited=None):
         """Make sure the entire DAG rooted at this point has IDs."""
 
         _visited = _visited or set()
@@ -105,11 +105,13 @@ class Job(dict):
             return
         _visited.add(self)
 
-        jid = self.setdefault('id', root)
+        jid = (base + '.' if base else '') + str(index)
+        jid = self.setdefault('id', jid)
+
         for i, dep in enumerate(self.dependencies):
-            dep.assert_graph_ids('{}.dep-{}'.format(jid, i), _visited)
+            dep.assert_graph_ids(base, index+1, _visited)
         for i, child in enumerate(self.children):
-            child.assert_graph_ids('{}.child-{}'.format(jid, i), _visited)
+            child.assert_graph_ids(jid, 1, _visited)
 
     def _iter_linearized(self, _visited=None):
 
