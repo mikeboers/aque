@@ -55,7 +55,7 @@ class Job(dict):
         self['status'] = 'error'
         self['error'] = message
 
-    def success(self, result=None):
+    def complete(self, result=None):
         self['status'] = 'success'
         self['result'] = result
 
@@ -99,7 +99,7 @@ class Job(dict):
             return self.setdefault('result', None)
 
     def _run(self):
-        
+
         job_type = self.get('type', 'generic')
         handler = aque.handlers.registry.get(job_type, job_type)
         handler = decode_callable(handler)

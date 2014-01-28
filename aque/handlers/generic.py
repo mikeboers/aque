@@ -14,4 +14,4 @@ def handle_generic(job):
 
     log.debug('calling %r with %r and %r' % (func, args, kwargs))
     
-    job.success(func(*args, **kwargs))
+    job.complete(func(*args, **kwargs))

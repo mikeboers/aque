@@ -17,4 +17,4 @@ def reduce_children(job):
 
     log.debug('reducing %r with %r and %r' % (sequence, func, args))
     
-    job.success(reduce(func, sequence, *args))
+    job.complete(reduce(func, sequence, *args))
