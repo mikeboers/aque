@@ -9,10 +9,13 @@ import aque.handlers
 log = logging.getLogger(__name__)
 
 
-class JobIncomplete(Exception):
+class DependencyError(RuntimeError):
+    """Raised when job dependencies cannot be resolved."""
+
+class JobIncomplete(RuntimeError):
     """Raised by :meth:`Job.result` when the job did not complete."""
 
-class JobError(Exception):
+class JobError(RuntimeError):
     """Raised by :meth:`Job.result` when the job errored without raised an exception."""
 
 
@@ -90,38 +93,44 @@ class Job(dict):
                 subs[i] = Job(x)
         return subs
 
-    def _assert_graph_ids(self, root='main', visited=None):
+    def assert_graph_ids(self, root='main', _visited=None):
+        """Make sure the entire DAG rooted at this point has IDs."""
 
-        visited = visited or set()
-        if self in visited:
+        _visited = _visited or set()
+        if self in _visited:
             return
-        visited.add(self)
+        _visited.add(self)
 
         jid = self.setdefault('id', root)
         for i, dep in enumerate(self.dependencies()):
-            dep._assert_graph_ids('{}.dep-{}'.format(jid, i), visited)
+            dep.assert_graph_ids('{}.dep-{}'.format(jid, i), _visited)
         for i, child in enumerate(self.children()):
-            child._assert_graph_ids('{}.child-{}'.format(jid, i), visited)
+            child.assert_graph_ids('{}.child-{}'.format(jid, i), _visited)
 
-    def _linearized(self, visited=None):
+    def _iter_linearized(self, _visited=None):
 
-        visited = visited or set()
-        if self in visited:
+        _visited = _visited or set()
+        if (self, 'incomplete') in _visited:
+            raise DependencyError('cycle in dependencies with %r' % self.get('id'))
+        if self in _visited:
             return
-        visited.add(self)
+
+        _visited.add((self, 'incomplete'))
+        _visited.add(self)
 
         for x in self.dependencies():
-            for y in x._linearized(visited):
+            for y in x._iter_linearized(_visited):
                 yield y
         for x in self.children():
-            for y in x._linearized(visited):
+            for y in x._iter_linearized(_visited):
                 yield y
 
+        _visited.remove((self, 'incomplete'))
         yield self
 
     def run(self):
-        self._assert_graph_ids()
-        for job in self._linearized():
+        self.assert_graph_ids()
+        for job in list(self._iter_linearized()):
             job._run()
         return self.setdefault('result', None)
 

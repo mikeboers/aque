@@ -56,4 +56,26 @@ class TestOrder(TestCase):
 
         self.assertEqual(res, ['d', 'b', 'c', 'a'])
 
+    def test_loop(self):
+
+        a = Job()
+        b = Job()
+
+        a.children().append(b)
+        b.children().append(a)
+
+        self.assertRaises(DependencyError, a.run)
+
+    def test_looped_branches(self):
+
+        a = Job()
+        b = Job()
+        c = Job()
+
+        a.children().extend((b, c))
+        b.children().append(c)
+        c.children().append(b)
+
+        self.assertRaises(DependencyError, a.run)
+
 
