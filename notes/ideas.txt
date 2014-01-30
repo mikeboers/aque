@@ -113,9 +113,9 @@ Unsorted
 - does task.error() raise an exception?
 
 - add "class" to task to specify the Python class; is "type" and "class" then confusing?
-  - names for the handler:
+  - names for the pattern:
     - type (too generic)
-    - handler
+    - pattern
     - processor
     - prototype
     - dispatcher
@@ -148,7 +148,7 @@ Unsorted
     task.error(message or exception)
     task.children() -> list of Tasks
 
-    # For async handlers only.
+    # For async patterns only.
     task.progress(count, max=None, message=None)
     task.ping(): this task is still running; don't reschedule it
 

@@ -3,7 +3,7 @@ import logging
 import pkg_resources
 
 from aque.utils import decode_callable
-import aque.handlers
+import aque.patterns
 
 
 log = logging.getLogger(__name__)
@@ -142,16 +142,16 @@ class Task(dict):
     def _run(self):
 
         task_type = self.get('type', 'generic')
-        handler = aque.handlers.registry.get(task_type, task_type)
-        handler = decode_callable(handler)
+        pattern = aque.patterns.registry.get(task_type, task_type)
+        pattern = decode_callable(pattern)
 
-        if handler is None:
-            raise ValueError('no aque handler for type %r' % task_type)
+        if pattern is None:
+            raise ValueError('no aque pattern for type %r' % task_type)
 
-        log.debug('handling task %r with %r' % (self['id'], handler))
+        log.debug('handling task %r with %r' % (self['id'], pattern))
         
         try:
-            handler(self)
+            pattern(self)
         except Exception as e:
             self['status'] = 'error'
             if e.args:

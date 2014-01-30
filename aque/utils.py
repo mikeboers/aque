@@ -58,7 +58,7 @@ def decode_values_when_possible(input_):
     return dict((k, decode_if_possible(v)) for k, v in input_.iteritems())
 
 
-def decode_callable(input_, entrypoint_group='aque_handlers'):
+def decode_callable(input_, entrypoint_group='aque_patterns'):
 
     # 1. If it is callable, pass through.
     if isinstance(input_, Callable):

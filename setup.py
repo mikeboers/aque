@@ -18,9 +18,9 @@ setup(
     ],
     
     entry_points={
-        'aque_handlers': [
-            'generic = aque.handlers.generic:handle_generic',
-            'reduce_children = aque.handlers.reduce:reduce_children',
+        'aque_patterns': [
+            'generic = aque.patterns.generic:handle_generic',
+            'reduce_children = aque.patterns.reduce:reduce_children',
         ],
     },
 

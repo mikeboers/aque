@@ -50,7 +50,7 @@ Tasks
     - "io_priority_hints" -> JSON list of paths where this task might do IO, so that the IO prioritizer can work
     
     - "args" and "kwargs"
-    - OR "package" -> JSON dict of data to pass to handler
+    - OR "package" -> JSON dict of data to pass to pattern
 
         - "func" -> for "generic" and "callable" tasks
         - "args" -> for shell or Python
