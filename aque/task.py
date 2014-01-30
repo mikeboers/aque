@@ -21,11 +21,10 @@ class TaskError(RuntimeError):
 
 class Task(dict):
 
-    def __init__(self, *args, **kwargs):
 
+    def __init__(self, *args, **kwargs):
         for x in itertools.chain(args, (kwargs, )):
             self.update(x)
-
         self.setdefaults(
             type='generic',
             status='pending',
@@ -33,7 +32,6 @@ class Task(dict):
 
     def __hash__(self):
         return id(self)
-
 
     def setdefaults(self, *args, **kwargs):
         res = {}
@@ -46,7 +44,7 @@ class Task(dict):
     def status(self):
         return self.setdefault('status', 'pending')
 
-    def result(self):
+    def result(self, strict=True):
         """Retrieve the results of running this task.
 
         :returns: The result of running the task.
@@ -58,6 +56,9 @@ class Task(dict):
 
         if self.status == 'success':
             return self.get('result')
+
+        elif not strict:
+            return
 
         elif self.status == 'error':
             exc = self.get('exception')
@@ -73,14 +74,21 @@ class Task(dict):
             raise TaskIncomplete('task is %s' % self.status)
 
     def error(self, message):
-        """Signal that the task has errored while running."""
+        """Signal that the task has errored while running.
+
+        :returns: A :class:`TaskError` that can be raised.
+
+        """
         self['status'] = 'error'
         self['error'] = message
+        # TODO: publish on redis
+        return TaskError(message)
 
     def complete(self, result=None):
         """Signal that the task has completed running."""
         self['status'] = 'success'
         self['result'] = result
+        # TODO: publish on redis
 
     def dependencies(self):
         subs = self.setdefault('dependencies', [])
@@ -140,26 +148,29 @@ class Task(dict):
         return self.setdefault('result', None)
 
     def _run(self):
+        """Find the pattern handler, call it, and catch errors."""
 
-        task_type = self.get('type', 'generic')
-        pattern = aque.patterns.registry.get(task_type, task_type)
-        pattern = decode_callable(pattern)
+        pattern_name = self.get('type', 'generic')
+        pattern_func = aque.patterns.registry.get(pattern_name, pattern_name)
+        pattern_func = decode_callable(pattern_func)
 
-        if pattern is None:
-            raise ValueError('no aque pattern for type %r' % task_type)
+        if pattern_func is None:
+            raise ValueError('no aque pattern %r' % pattern_name)
 
-        log.debug('handling task %r with %r' % (self['id'], pattern))
+        # log.debug('handling task %r with %r' % (self['id'], pattern))
         
         try:
-            pattern(self)
+            pattern_func(self)
         except Exception as e:
             self['status'] = 'error'
             if e.args:
                 self['error'] = e.args[0]
-            self['error_type'] = e.__class__.__name__
+            self['error_type'] = '{}.{}'.format(
+                e.__class__.__module__,
+                e.__class__.__name__,
+            )
             self['exception'] = e
             raise
-
 
 
     def progress(self, value, max=None, message=None):
