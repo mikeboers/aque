@@ -1,17 +1,17 @@
-Job Handlers
+Task Handlers
 ============
 
-A job handler is a callable which is responsible for interpreting a job definition and starting its execution. It is often enough to provide your own callable to an existing handler instead of making your own handlers.
+A task handler is a callable which is responsible for interpreting a task definition and starting its execution. It is often enough to provide your own callable to an existing handler instead of making your own handlers.
 
-The handler accepts a :class:`.Job` as its only argument, and calls :meth:`.Job.complete` when the job completes successfully or :meth:`.Job.error` when an error occours.
+The handler accepts a :class:`.Task` as its only argument, and calls :meth:`.Task.complete` when the task completes successfully or :meth:`.Task.error` when an error occours.
 
 The ``generic`` Handler
 -----------------------
 
 The default ``generic`` handler calls ``func`` with the given ``args`` and ``kwargs``, and is easily defined::
 
-    def generic(job):
-        func = job['func']
-        args = job.get('args', ())
-        kwargs = job.get('kwargs', {})
-        job.complete(func(*args, **kargs))
+    def generic(task):
+        func = task['func']
+        args = task.get('args', ())
+        kwargs = task.get('kwargs', {})
+        task.complete(func(*args, **kargs))

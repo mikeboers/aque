@@ -6,12 +6,12 @@ from aque.utils import decode_callable
 log = logging.getLogger(__name__)
 
 
-def handle_generic(job):
+def handle_generic(task):
 
-    func = decode_callable(job.get('func'))
-    args = job.get('args', ())
-    kwargs = job.get('kwargs', {})
+    func = decode_callable(task.get('func'))
+    args = task.get('args', ())
+    kwargs = task.get('kwargs', {})
 
     log.debug('calling %r with %r and %r' % (func, args, kwargs))
     
-    job.complete(func(*args, **kwargs))
+    task.complete(func(*args, **kwargs))

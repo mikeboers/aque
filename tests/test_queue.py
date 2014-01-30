@@ -11,7 +11,7 @@ class TestQueueBasics(TestCase):
     def test_basic_submit(self):
 
         jid = self.queue.submit({})
-        self.assertEqual(jid, 'queue_basics:job:1')
+        self.assertEqual(jid, 'queue_basics:task:1')
 
         self.assertEqual(self.redis.hget(jid, 'status'), 'pending')
         self.assertEqual(self.redis.hget(jid, 'priority'), '1000')

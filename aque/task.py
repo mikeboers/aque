@@ -10,16 +10,16 @@ log = logging.getLogger(__name__)
 
 
 class DependencyError(RuntimeError):
-    """Raised when job dependencies cannot be resolved."""
+    """Raised when task dependencies cannot be resolved."""
 
-class JobIncomplete(RuntimeError):
-    """Raised by :meth:`Job.result` when the job did not complete."""
+class TaskIncomplete(RuntimeError):
+    """Raised by :meth:`Task.result` when the task did not complete."""
 
-class JobError(RuntimeError):
-    """Raised by :meth:`Job.result` when the job errored without raised an exception."""
+class TaskError(RuntimeError):
+    """Raised by :meth:`Task.result` when the task errored without raised an exception."""
 
 
-class Job(dict):
+class Task(dict):
 
     def __init__(self, *args, **kwargs):
 
@@ -47,12 +47,12 @@ class Job(dict):
         return self.setdefault('status', 'pending')
 
     def result(self):
-        """Retrieve the results of running this job.
+        """Retrieve the results of running this task.
 
-        :returns: The result of running the job.
-        :raises: :class:`JobIncomplete` if incomplete, 
-            :class:`JobError` if the job errored,
-            or any exception that the execution of the job may have raised.
+        :returns: The result of running the task.
+        :raises: :class:`TaskIncomplete` if incomplete, 
+            :class:`TaskError` if the task errored,
+            or any exception that the execution of the task may have raised.
 
         """
 
@@ -64,36 +64,36 @@ class Job(dict):
             if exc:
                 raise exc
             message = '{} from {}'.format(self.get('error', 'unknown'), self.get('id', 'unknown'))
-            type_ = self.get('error_type', JobError)
+            type_ = self.get('error_type', TaskError)
             if isinstance(type_, basestring):
-                type_ = getattr(__builtins__, type_, JobError)
+                type_ = getattr(__builtins__, type_, TaskError)
             raise type_(message)
 
         else:
-            raise JobIncomplete('job is %s' % self.status)
+            raise TaskIncomplete('task is %s' % self.status)
 
     def error(self, message):
-        """Signal that the job has errored while running."""
+        """Signal that the task has errored while running."""
         self['status'] = 'error'
         self['error'] = message
 
     def complete(self, result=None):
-        """Signal that the job has completed running."""
+        """Signal that the task has completed running."""
         self['status'] = 'success'
         self['result'] = result
 
     def dependencies(self):
         subs = self.setdefault('dependencies', [])
         for i, x in enumerate(subs):
-            if not isinstance(x, Job):
-                subs[i] = Job(x)
+            if not isinstance(x, Task):
+                subs[i] = Task(x)
         return subs
 
     def children(self):
         subs = self.setdefault('children', [])
         for i, x in enumerate(subs):
-            if not isinstance(x, Job):
-                subs[i] = Job(x)
+            if not isinstance(x, Task):
+                subs[i] = Task(x)
         return subs
 
     def assert_graph_ids(self, base=None, index=1, _visited=None):
@@ -135,20 +135,20 @@ class Job(dict):
 
     def run(self):
         self.assert_graph_ids()
-        for job in list(self._iter_linearized()):
-            job._run()
+        for task in list(self._iter_linearized()):
+            task._run()
         return self.setdefault('result', None)
 
     def _run(self):
 
-        job_type = self.get('type', 'generic')
-        handler = aque.handlers.registry.get(job_type, job_type)
+        task_type = self.get('type', 'generic')
+        handler = aque.handlers.registry.get(task_type, task_type)
         handler = decode_callable(handler)
 
         if handler is None:
-            raise ValueError('no aque handler for type %r' % job_type)
+            raise ValueError('no aque handler for type %r' % task_type)
 
-        log.debug('handling job %r with %r' % (self['id'], handler))
+        log.debug('handling task %r with %r' % (self['id'], handler))
         
         try:
             handler(self)
@@ -159,6 +159,25 @@ class Job(dict):
             self['error_type'] = e.__class__.__name__
             self['exception'] = e
             raise
+
+
+
+    def progress(self, value, max=None, message=None):
+        """Notify the web UI of progress."""
+
+        if value is not None:
+            self['progress'] = value
+        if max is not None:
+            self['progress_max'] = max
+        if message is not None:
+            self['progress_message'] = message
+
+        # TODO: publish to some channel
+
+    def ping(self):
+        """Notify the other workers that this task is not dead."""
+        # TODO: do something.
+    
 
 
 

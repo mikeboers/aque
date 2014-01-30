@@ -11,11 +11,11 @@ def handler(name, func=None):
     
     ::
         @handler
-        def my_handler(job):
+        def my_handler(task):
             pass
 
         @handler('explicit_name')
-        def another_handler(job):
+        def another_handler(task):
             pass
 
     """

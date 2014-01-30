@@ -2,7 +2,7 @@ import grp
 import os
 import pwd
 
-from aque.job import Job
+from aque.task import Task
 
 
 class Queue(object):
@@ -20,28 +20,28 @@ class Queue(object):
         else:
             return ('{}:' + format).format(self.name, *args)
 
-    def submit(self, job):
+    def submit(self, task):
 
-        if not isinstance(job, Job):
-            job = Job(job)
+        if not isinstance(task, Task):
+            task = Task(task)
 
         user = pwd.getpwuid(os.getuid())
         group = grp.getgrgid(user.pw_gid)
 
-        job.setdefaults(
+        task.setdefaults(
             priority=1000,
             user=user.pw_name,
             group=group.gr_name,
         )
 
-        id_num = self.redis.incr(self._format('job_counter'))
+        id_num = self.redis.incr(self._format('task_counter'))
 
-        jid = job['id'] = self._format('job:{}', id_num)
-        job['status'] = 'pending'
+        jid = task['id'] = self._format('task:{}', id_num)
+        task['status'] = 'pending'
 
-        self.redis.hmset(jid, job)
-        self.redis.rpush(self._format('pending_jobs'), jid)
-        self.redis.publish(self._format('{}:status', jid, _db=True), job['status'])
+        self.redis.hmset(jid, task)
+        self.redis.rpush(self._format('pending_tasks'), jid)
+        self.redis.publish(self._format('{}:status', jid, _db=True), task['status'])
 
         return jid
 

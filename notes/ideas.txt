@@ -1,23 +1,23 @@
 How to prioritize
 =================
 
-When we start, subscribe to the "$base@$db:status_changes" queue, then pull all existing pending jobs.
+When we start, subscribe to the "$base@$db:status_changes" queue, then pull all existing pending tasks.
 
-As new jobs are posted (or on start), calculate their invariant scores, and hold them. Consider setting these scores into "$base:job:$jid:scores" so that others can see
+As new tasks are posted (or on start), calculate their invariant scores, and hold them. Consider setting these scores into "$base:task:$jid:scores" so that others can see
 
-Whenever there is a new job, or one finishes, or a pending one will timeout, or HUP, iterate from top to bottom of local list and take the first one that we satisfy the requirements of. This job capture must be atomic.
+Whenever there is a new task, or one finishes, or a pending one will timeout, or HUP, iterate from top to bottom of local list and take the first one that we satisfy the requirements of. This task capture must be atomic.
 
-Each job has a timeout (default to 300 seconds) that allows others to take it over in case it failed. The worker can ping redis periodically (about every half of that time) to assert that the job is still alive.
+Each task has a timeout (default to 300 seconds) that allows others to take it over in case it failed. The worker can ping redis periodically (about every half of that time) to assert that the task is still alive.
 
-Priority is per-level only. E.g. astronomical priorities in a sub-job do not affect the scheduling of their parent.
+Priority is per-level only. E.g. astronomical priorities in a sub-task do not affect the scheduling of their parent.
 
 
 Atomic Captures
 ===============
 
-Idea 1: "$base:job:$jid:capture_id" is an int of capture attempts. You INCR this then compare to the value in "$base:job:$jid"."capture_id". If the new ID is only one more than the one in the hash, then you won it. You have only a few seconds to update the job and set a "last_active" time.
+Idea 1: "$base:task:$jid:capture_id" is an int of capture attempts. You INCR this then compare to the value in "$base:task:$jid"."capture_id". If the new ID is only one more than the one in the hash, then you won it. You have only a few seconds to update the task and set a "last_active" time.
 
-Idea 2: "$base:job:$jid:lock" is set to when it was locked by its worker. This is set via "SET <key> <worker>:<time> NX EX <timeout>". Unlock with a basic lua script. See: http://redis.io/commands/set
+Idea 2: "$base:task:$jid:lock" is set to when it was locked by its worker. This is set via "SET <key> <worker>:<time> NX EX <timeout>". Unlock with a basic lua script. See: http://redis.io/commands/set
 
 
 Timeouts
@@ -29,7 +29,7 @@ The times of the two servers must be accurate. Call redis.time and use that to f
 Curator & Web UI
 ================
 
-A curator process removes all logs from redis, and stores jobs once they are done.
+A curator process removes all logs from redis, and stores tasks once they are done.
 
 "$base:curator" is a hash of info for contacting the curator
     "host" and "port"
@@ -37,9 +37,9 @@ A curator process removes all logs from redis, and stores jobs once they are don
 
 Logs are published to "$base:curator_channel", and pushed to "$base:curator_queue" if there wasn't anyone listening to it.
 
-One captures all logs, and stores details of complete jobs once they are done.
+One captures all logs, and stores details of complete tasks once they are done.
 
-- log data chunks are appended to "$base:job:$jid:output" and published to a queue
+- log data chunks are appended to "$base:task:$jid:output" and published to a queue
 - chunk format: "<timestamp> <channel> <data>"
 - common channels are: stdout, stderr, status, progress, pylogging, usage
 - "stdout" and "stderr" channels have format "<index in bytes> data"
@@ -51,14 +51,14 @@ One captures all logs, and stores details of complete jobs once they are done.
 - these are dumped to a log file with data 'string-escape'd.
 
 - http api for retrieving old data and logs
-    /job/$jid
-    /job/$jid/logs
+    /task/$jid
+    /task/$jid/logs
 
 
 Heirarchy
 =========
 
-Stuff like "requirements" are inherited by children if not specified. Then one can make a set of ranges of subjobs and not have to specify that stuff a bajillion times. Perhaps an "inherit=False" could stop that.
+Stuff like "requirements" are inherited by children if not specified. Then one can make a set of ranges of subtasks and not have to specify that stuff a bajillion times. Perhaps an "inherit=False" could stop that.
 
 
 Name
@@ -76,13 +76,13 @@ Name
 Statuses
 ========
 
-"pending" -> job has not run yet
+"pending" -> task has not run yet
 
-"paused" -> job had not run, and should not run
+"paused" -> task had not run, and should not run
 
-"success" -> job has run and results may be in "result"
+"success" -> task has run and results may be in "result"
 
-"error" -> job errored and some of the following may be set:
+"error" -> task errored and some of the following may be set:
     - "error" -> a message
     - "error_type" -> a class name
     - "exception" -> an exception
@@ -91,8 +91,8 @@ Statuses
 API
 ===
 
-from aque import current_job
-current_job() -> proxies to the current job via threading.local()
+from aque import current_task
+current_task() -> proxies to the current task via threading.local()
 
 
 Testing
@@ -104,56 +104,64 @@ For now use the synchonous API. Later figure out how to do it on Redis.
 Unsorted
 ========
 
-- does job.error() raise an exception?
+- rename Task -> Task?
 
-- add "class" to job to specify the job class; is "type" and "class" then confusing?
-  - "handler" and "class"
-  - "processor" and "class"
-  - "prototype" and "type"
-  - "dispatcher" and "type"
+- task.log -> logger
+- func -> target for compatibility with threading/multiprocessing, or "fn" for compatibility with futures?
+  if first arg of a Task is callable, then it is the func
+
+- does task.error() raise an exception?
+
+- add "class" to task to specify the Python class; is "type" and "class" then confusing?
+  - names for the handler:
+    - type (too generic)
+    - handler
+    - processor
+    - prototype
+    - dispatcher
+    - pattern
+    - executor
+  - names for the Python class:
+    - class
+    - type (too generic)
+    - constructor
+  - best selection: "pattern" and "class"
+
 
 - "args" value of "children" assembles args from results of children, and "dependencies" is similar
     - same as: func(*(child.result() for child in self.children))
 
-- should children and dependencies actually be functions so that children can be determined at runtime?
-  This would allow for a job's children to depend upon its dependencies. How could this possibly
-  be done so that the workers would be able to figure it out themselves?
-    - the job class would need to assert that multiple calls to generating children would result
-      in exactly the same children. Then the various workers would take the children as existing
-      even though they may not be backed in the DB.
-    - job.backfill() would pull missing data from Redis, and job.update() could pull updates from Redis
+- task.__getitem__ could eval 'attr.func' and 'attr.expr' before looking for 'attr'
 
-- job.__getitem__ could eval 'attr.func' and 'attr.expr' before looking for 'attr'
+- Task class abstracts away all of the storage:
 
-- Job class abstracts away all of the storage:
-
-    Job._field_types = dict(
+    Task._field_types = dict(
         func='callable',
         etc.
     )
 
-    job[name] -> underlying dict-style store
-    job.attr(name) -> "{attr}_func" gets called or "{attr}_expr" gets evaluated
+    task[name] -> underlying dict-style store
+    task.attr(name) -> "{attr}_func" gets called or "{attr}_expr" gets evaluated
     
     # Sync and async API.
-    job.complete(result)
-    job.error(message or exception)
-    job.children() -> list of Jobs
+    task.complete(result)
+    task.error(message or exception)
+    task.children() -> list of Tasks
 
     # For async handlers only.
-    job.progress(count, max=None, message=None)
-    job.ping(): this job is still running; don't reschedule it
+    task.progress(count, max=None, message=None)
+    task.ping(): this task is still running; don't reschedule it
 
     # For async schedulers.
-    job.cancel()
-    job.retry(recursive=False)
+    task.cancel()
+    task.retry(recursive=False)
 
 
-- job type is just a callable that takes a Job, registered via entrypoints
+- task type is just a callable that takes a Task, registered via entrypoints
 
     The successful completion of the callable does not signal success because it could be used to schedule a background process. Raising an exception does, however, signal an error.
 
-- "children" are subjobs, while "dependencies" are others parts of a pipeline
+- "children" are subtasks, while "dependencies" are others parts of a pipeline
 
 - local, syncronous execution first makes sure the dependencies are good, then
   it's children, then itself
@@ -169,19 +177,19 @@ Unsorted
 
 
 
-- different queuing/flow methods to join up various jobs
+- different queuing/flow methods to join up various tasks
     - pipe has results flow from one to the next
-    - reduce calls the job once for every dependant result
+    - reduce calls the task once for every dependant result
 
-- `aque` command-line to queue shell jobs
+- `aque` command-line to queue shell tasks
     - output specifies dependency for piping, e.g.:
         a=$(aque echo hello)
         b=$(aque --pipe-from "$a" md5)
         aque --wait --results "$b"
 
-- "groups" or "child templates" allow to have jobs inherit from a template (to ease specification of hundreds of similar jobs)
+- "groups" or "child templates" allow to have tasks inherit from a template (to ease specification of hundreds of similar tasks)
 
-- perhaps every key should be stored in it's full form (with "$base:job:$jid") so that is is easy to recursively remove a job
+- perhaps every key should be stored in it's full form (with "$base:task:$jid") so that is is easy to recursively remove a task
 
 
 
@@ -201,33 +209,33 @@ Unsorted
 
 - see https://github.com/percolate/redset
 
-- jobs should be able to specify subjobs without actually creating the objects, to simplify stuff such as chunking ranges of timecodes, etc. However, this doesn't make a ton of sense since each subjob will need to have a status in the end. Ergo, the simplest way is for the caller to manually chunk the job as it is specified. But how then can we get seperate statuses for each of the frames? We could do a map-reduce style arangement...
+- tasks should be able to specify subtasks without actually creating the objects, to simplify stuff such as chunking ranges of timecodes, etc. However, this doesn't make a ton of sense since each subtask will need to have a status in the end. Ergo, the simplest way is for the caller to manually chunk the task as it is specified. But how then can we get seperate statuses for each of the frames? We could do a map-reduce style arangement...
 
-- Go with a whole map-reduce concept for the whole thing? Each job is a map, and each level performs a reduce. Per-frame errors could be propigated all the way to the top level in a format such that when it is restarted, it is ok.
+- Go with a whole map-reduce concept for the whole thing? Each task is a map, and each level performs a reduce. Per-frame errors could be propigated all the way to the top level in a format such that when it is restarted, it is ok.
 
 - Different ways of specifying children:
-    - there is a "$base:job:$jid:child_ids" list of child job IDs
-    - "range": there is a "range_spec" key on the job
-    - "argset": there is a "$base:job:$jid:child_args" list of arguments for children
+    - there is a "$base:task:$jid:child_ids" list of child task IDs
+    - "range": there is a "range_spec" key on the task
+    - "argset": there is a "$base:task:$jid:child_args" list of arguments for children
 
-- Python and bash APIs for fetching info about the current job. Communicated via environment variables.
+- Python and bash APIs for fetching info about the current task. Communicated via environment variables.
 
-    current_job().top_level.description
-    current_job().set_status('suspend')
+    current_task().top_level.description
+    current_task().set_status('suspend')
 
 - "python_eval" type could have "py_setup", "py_main" and "py_teardown",
-  all of which run in the same locals, and have the job spec as the globals. Then
+  all of which run in the same locals, and have the task spec as the globals. Then
   if you specify a list of locals, it can walk across them all processing them, and
   updating the status of each child
 
-- jobs/subjobs/subsubjobs are traversed in a depth-first manner, and an upper tier may only be captured by a worker if all of the children are complete
+- tasks/subtasks/subsubtasks are traversed in a depth-first manner, and an upper tier may only be captured by a worker if all of the children are complete
 
 - is it possible to have this implemented in a manner so that there isn't a
   master server, but instead it is ALL through redis?
 
 - have a concurrent.futures interface as well
 
-- priority should have several weights: availible memory and processors (drop to zero if the resources don't exist or starting this job would pull us down past zero), if inputs or outputs lie on the direct RAID or across the NFS (weighted inversely by speed?)
+- priority should have several weights: availible memory and processors (drop to zero if the resources don't exist or starting this task would pull us down past zero), if inputs or outputs lie on the direct RAID or across the NFS (weighted inversely by speed?)
 
     - priority calculators could be discovered via entrypoints. could expose lua fragments that
       are concatted together
@@ -235,13 +243,13 @@ Unsorted
     - when looking for new work, get the whole pending list and calculate the
       scores for whichever ones are NOT in the worker
 
-- subjobs specified directly, or via ranges
+- subtasks specified directly, or via ranges
 
 - this would be tons easier if we had the "scan" command
 
-- "$base:job:$jid:children" vs "$base:job.children:$jid"
+- "$base:task:$jid:children" vs "$base:task.children:$jid"
 
-- reporting by timecodes and durations, instead of individual jobs. Then we can do an output status per sequence.
+- reporting by timecodes and durations, instead of individual tasks. Then we can do an output status per sequence.
 - ARC_CMD and others may stuff some metadata into the headers such as how many frames were processed in that sequence
 
 - the only non-basic stuff that Jon wants is progress output for both UI updates (e.g. the web UI) and for knowing how far we got if it errored out

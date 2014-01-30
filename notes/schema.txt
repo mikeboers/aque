@@ -6,27 +6,27 @@ Definitions
 - $db is the database ID (defaults to 0)
 
 - $worker is the name of a worker, usually the hostname
-- $jid is a job ID: a unique string; some sort of UUID. If we deny the use of dots they can be used to specify subjobs. We should also not allow slashes to make neater URLs.
+- $jid is a task ID: a unique string; some sort of UUID. If we deny the use of dots they can be used to specify subtasks. We should also not allow slashes to make neater URLs.
 
 
 Global State
 ============
 
-- "$base:job_counter" -> integer primary key
+- "$base:task_counter" -> integer primary key
 
-- "$base:pending_jobs" -> list of top-level jobs that are not complete
-- "$base:complete_jobs" -> list of top-level jobs that are complete (errored or not)
+- "$base:pending_tasks" -> list of top-level tasks that are not complete
+- "$base:complete_tasks" -> list of top-level tasks that are complete (errored or not)
 
-- "$base@$db:job:$jid:status" -> channel that receives status changes of jobs
+- "$base@$db:task:$jid:status" -> channel that receives status changes of tasks
 
 - "$base:workers" -> list of all worker IDs
 - "$base:worker:$worker" -> hash of worker info, such as IP, hostname, PID, starttime, etc.
 
 
-Jobs
+Tasks
 ====
 
-- "$base:job:$jid" -> hash of job metadata
+- "$base:task:$jid" -> hash of task metadata
 
     - "status" -> "pending", "success", "error"
 
@@ -38,7 +38,7 @@ Jobs
     - "priority" -> integer base priority value; higher priorities run first
 
     - "requirements" -> JSON dict of requirements: cores, mem, platform, licenses, etc
-    - "dependencies" -> JSON list of jobs which must complete successfully
+    - "dependencies" -> JSON list of tasks which must complete successfully
     - "children" -> JSON list of child IDs
 
     - "user" and "group" -> run as these
@@ -46,12 +46,12 @@ Jobs
 
     - "description" -> for human consumption
 
-    - "duration_hint" -> guess as to duration so that longer jobs can be prioritized
-    - "io_priority_hints" -> JSON list of paths where this job might do IO, so that the IO prioritizer can work
+    - "duration_hint" -> guess as to duration so that longer tasks can be prioritized
+    - "io_priority_hints" -> JSON list of paths where this task might do IO, so that the IO prioritizer can work
     
     - "args" and "kwargs"
     - OR "package" -> JSON dict of data to pass to handler
 
-        - "func" -> for "generic" and "callable" jobs
+        - "func" -> for "generic" and "callable" tasks
         - "args" -> for shell or Python
         - "kwargs" -> for Python

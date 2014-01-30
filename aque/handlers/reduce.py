@@ -6,17 +6,17 @@ from aque.utils import decode_callable
 log = logging.getLogger(__name__)
 
 
-def reduce_children(job):
+def reduce_children(task):
 
-    func = decode_callable(job.get('func'))
+    func = decode_callable(task.get('func'))
 
-    args = job.get('args', ())
+    args = task.get('args', ())
     if len(args) >= 2:
-        job.error('too many args; reduce expects 1, got %d' % len(args))
+        task.error('too many args; reduce expects 1, got %d' % len(args))
         return
 
-    sequence = [child.result() for child in job.children()]
+    sequence = [child.result() for child in task.children()]
 
     log.debug('reducing %r with %r and %r' % (sequence, func, args))
     
-    job.complete(reduce(func, sequence, *args))
+    task.complete(reduce(func, sequence, *args))
