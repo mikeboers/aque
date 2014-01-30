@@ -19,8 +19,8 @@ setup(
     
     entry_points={
         'aque_patterns': [
-            'generic = aque.patterns.generic:handle_generic',
-            'reduce_children = aque.patterns.reduce:reduce_children',
+            'generic = aque.patterns.generic:do_generic_task',
+            'reduce_children = aque.patterns.reduce:do_reduce_task',
         ],
     },
 
