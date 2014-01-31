@@ -34,12 +34,13 @@ class Queue(object):
 
         id_num = self.redis.incr(self._format('task_counter'))
 
-        jid = task['id'] = self._format('task:{}', id_num)
-        task['status'] = 'pending'
+        task.id = self._format('task:{}', id_num)
+        task.status = 'pending'
 
-        self.redis.hmset(jid, task)
-        self.redis.rpush(self._format('pending_tasks'), jid)
-        self.redis.publish(self._format('{}:status', jid, _db=True), task['status'])
+        self.redis.hmset(task.id + ':static', task._static)
+        self.redis.hmset(task.id + ':dynamic', task._dynamic)
+        self.redis.rpush(self._format('pending_tasks'), task.id)
+        self.redis.publish(self._format('{}:status', id_num, _db=True), task.status)
 
-        return jid
+        return task.id
 

@@ -8,9 +8,9 @@ log = logging.getLogger(__name__)
 
 def do_reduce_task(task):
 
-    func = decode_callable(task.get('func'))
+    func = decode_callable(task.func)
 
-    args = task.get('args', ())
+    args = task.args or ()
     if len(args) >= 2:
         task.error('too many args; reduce expects 1, got %d' % len(args))
         return

@@ -56,7 +56,7 @@ class dynamicproperty(BaseProperty):
 
 
 
-class Task(collections.MutableMapping):
+class Task(object):
 
     pattern = staticproperty('pattern')
     func = staticproperty('func')
@@ -88,35 +88,6 @@ class Task(collections.MutableMapping):
                 setattr(self, k, v)
             else:
                 self[k] = v
-
-    def __getitem__(self, key):
-        try:
-            return self._dynamic[key]
-        except KeyError:
-            return self._static[key]
-
-    def __setitem__(self, key, value):
-        if self._dynamic:
-            self._dynamic[key] = value
-        else:
-            self._static[key] = value
-
-    def __delitem__(self, key):
-        try:
-            del self._dynamic[key]
-        except KeyError:
-            if key in self._static:
-                raise RuntimeError("can't del from Task._static")
-            raise
-
-    def __hash__(self):
-        return id(self)
-
-    def __iter__(self):
-        return iter(set(self._static).union(self._dynamic))
-
-    def __len__(self):
-        return len(set(self._static).union(self._dynamic))
 
     def result(self, strict=True):
         """Retrieve the results of running this task.
