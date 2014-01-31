@@ -20,10 +20,7 @@ class TaskError(RuntimeError):
     """Raised by :meth:`Task.result` when the task errored without raised an exception."""
 
 
-class BaseProperty(object):
-
-    def objstore(self, obj):
-        raise NotImplementedError()
+class taskproperty(object):
 
     def __init__(self, name, default=None):
         self.name = name
@@ -33,48 +30,39 @@ class BaseProperty(object):
         if obj is None:
             return self
         try:
-            return self.objstore(obj)[self.name]
+            return obj._store[self.name]
         except KeyError:
             if self.default:
-                return self.objstore(obj).setdefault(self.name, self.default())
+                return obj._store.setdefault(self.name, self.default())
             raise AttributeError(self.name)
 
     def __set__(self, obj, value):
-        self.objstore(obj)[self.name] = value
-
-
-class staticproperty(BaseProperty):
-
-    def objstore(self, obj):
-        return obj._static
-
-
-class dynamicproperty(BaseProperty):
-
-    def objstore(self, obj):
-        return obj._dynamic
-
+        if obj.is_frozen:
+            raise RuntimeError('task has been frozen')
+        else:
+            obj._store[self.name] = value
 
 
 class Task(object):
 
-    pattern = staticproperty('pattern')
-    func = staticproperty('func')
-    args = staticproperty('args')
-    kwargs = staticproperty('kwargs')
+    pattern = taskproperty('pattern')
+    func = taskproperty('func')
+    args = taskproperty('args')
+    kwargs = taskproperty('kwargs')
 
-    children = staticproperty('children', default=list)
-    dependencies = staticproperty('dependencies', default=list)
+    children = taskproperty('children', default=list)
+    dependencies = taskproperty('dependencies', default=list)
 
-    status = dynamicproperty('status')
+    status = taskproperty('status')
+
 
 
     def __init__(self, func=None, args=None, kwargs=None, **extra):
 
         self.id = None
+        self.is_frozen = False
 
-        self._static = {}
-        self._dynamic = {}
+        self._store = {}
 
         self.pattern = 'generic'        
         self.func = func
@@ -100,17 +88,17 @@ class Task(object):
         """
 
         if self.status == 'success':
-            return self._dynamic.get('result')
+            return self._store.get('result')
 
         elif not strict:
             return
 
         elif self.status == 'error':
-            exc = self._dynamic.get('exception')
+            exc = self._store.get('exception')
             if exc:
                 raise exc
-            message = '{} from {}'.format(self._dynamic.get('error', 'unknown'), self.id)
-            type_ = self._dynamic.get('error_type', TaskError)
+            message = '{} from {}'.format(self._store.get('error', 'unknown'), self.id)
+            type_ = self._store.get('error_type', TaskError)
             if isinstance(type_, basestring):
                 type_ = getattr(__builtins__, type_, TaskError)
             raise type_(message)
@@ -125,8 +113,8 @@ class Task(object):
 
         """
 
-        self.status = 'error'
-        self._dynamic['error'] = message
+        self._store['status'] = 'error'
+        self._store['error'] = message
 
         # TODO: publish on redis
         return TaskError(message)
@@ -134,8 +122,8 @@ class Task(object):
     def complete(self, result=None):
         """Signal that the task has completed running."""
 
-        self.status = 'success'
-        self._dynamic['result'] = result
+        self._store['status'] = 'success'
+        self._store['result'] = result
         # TODO: publish on redis
 
     def assert_graph_ids(self, base=None, index=1, _visited=None):
@@ -179,7 +167,7 @@ class Task(object):
         self.assert_graph_ids()
         for task in list(self._iter_linearized()):
             task._run()
-        return self._dynamic.setdefault('result', None)
+        return self._store.setdefault('result', None)
 
     def _run(self):
         """Find the pattern handler, call it, and catch errors."""
@@ -198,12 +186,12 @@ class Task(object):
         except Exception as e:
             self.status = 'error'
             if e.args:
-                self._dynamic['error'] = e.args[0]
-            self._dynamic['error_type'] = '{}.{}'.format(
+                self._store['error'] = e.args[0]
+            self._store['error_type'] = '{}.{}'.format(
                 e.__class__.__module__,
                 e.__class__.__name__,
             )
-            self._dynamic['exception'] = e
+            self._store['exception'] = e
             raise
 
 

@@ -104,23 +104,11 @@ For now use the synchonous API. Later figure out how to do it on Redis.
 Unsorted
 ========
 
-- it is too confusing with the Task being a dict, but not being supposed to
-  actually store stuff that way.
 
-  - assume that once the Task has been frozen and stored there are no changes
-    allowed EXCEPT to those specifically marked, e.g. status, result, error, etc
-  - perhaps it would make sense to have a specification and a runtime that one
-    is allowed to periodically update:
-        static:
-            - func, args, kwargs
-            - pattern, class,
-            - priority, etc..
-        dynamic:
-            - status
-            - result, error, error_*
-            - 
+- once a Task has been frozen, do not allow changes to it from the user's side
 
-
+    - everything which gets stored must have a task property to serialize it
+    - this can deny changes one task.is_frozen
 
 - task.args():
     - self['args'] == 'children' assembles args from results of children

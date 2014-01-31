@@ -16,8 +16,8 @@ class TestQueueBasics(TestCase):
         jid = self.queue.submit({})
         self.assertEqual(jid, 'queue_basics:task:1')
 
-        self.assertEqual(self.redis.hget(jid + ':dynamic', 'status'), 'pending')
-        self.assertEqual(self.redis.hget(jid + ':static', 'priority'), '1000')
+        self.assertEqual(self.redis.hget(jid, 'status'), 'pending')
+        self.assertEqual(self.redis.hget(jid, 'priority'), '1000')
 
 
 

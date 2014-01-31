@@ -28,19 +28,19 @@ class Queue(object):
         user = pwd.getpwuid(os.getuid())
         group = grp.getgrgid(user.pw_gid)
 
-        task._static.setdefault('priority', 1000)
-        task._static.setdefault('user', user.pw_name)
-        task._static.setdefault('group', group.gr_name)
+        task._store.setdefault('priority', 1000)
+        task._store.setdefault('user', user.pw_name)
+        task._store.setdefault('group', group.gr_name)
 
         id_num = self.redis.incr(self._format('task_counter'))
 
         task.id = self._format('task:{}', id_num)
         task.status = 'pending'
 
-        self.redis.hmset(task.id + ':static', task._static)
-        self.redis.hmset(task.id + ':dynamic', task._dynamic)
+        self.redis.hmset(task.id, task._store)
         self.redis.rpush(self._format('pending_tasks'), task.id)
         self.redis.publish(self._format('{}:status', id_num, _db=True), task.status)
 
+        task.is_frozen = True
         return task.id
 
