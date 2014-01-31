@@ -6,7 +6,7 @@ import os
 import pkg_resources
 import pwd
 
-from aque.utils import decode_callable
+from aque.utils import decode_callable, encode_if_required, decode_if_possible
 import aque.patterns
 
 
@@ -25,10 +25,11 @@ class TaskError(RuntimeError):
 
 class taskproperty(object):
 
-    def __init__(self, name, default=None, reduce=None):
+    def __init__(self, name, default=None, load=None, dump=None):
         self.name = name
         self._default = default
-        self._reduce = reduce
+        self._load = load
+        self._dump = dump
 
     def __get__(self, obj, cls=None):
         if obj is None:
@@ -36,8 +37,6 @@ class taskproperty(object):
         try:
             return obj._store[self.name]
         except KeyError:
-            if self._default:
-                return obj._store.setdefault(self.name, self._default())
             raise AttributeError(self.name)
 
     def __set__(self, obj, value):
@@ -47,8 +46,10 @@ class taskproperty(object):
             obj._store[self.name] = value
 
 
-def reduce_task_list(input_):
-    return [x.id if isinstance(x, Task) else x for x in input_]
+def dump_task_list(task, tasks):
+    return [x.id if isinstance(x, Task) else x for x in tasks]
+def load_task_list(task, tids):
+    return [task.queue.load_task(tid) if isinstance(tid, basestring) else tid for tid in tids]
 
 
 default_user = pwd.getpwuid(os.getuid())
@@ -57,20 +58,28 @@ default_group = grp.getgrgid(default_user.pw_gid)
 
 class Task(object):
 
-    pattern = taskproperty('pattern')
+    pattern = taskproperty('pattern', default=lambda: 'generic')
     func = taskproperty('func')
     args = taskproperty('args')
     kwargs = taskproperty('kwargs')
 
-    children = taskproperty('children', default=list, reduce=reduce_task_list)
-    dependencies = taskproperty('dependencies', default=list, reduce=reduce_task_list)
+    children = taskproperty('children',
+        default=list,
+        dump=dump_task_list,
+        load=load_task_list,
+    )
 
-    status = taskproperty('status')
+    dependencies = taskproperty('dependencies',
+        default=list,
+        dump=dump_task_list,
+        load=load_task_list,
+    )
+
+    status = taskproperty('status', default=lambda: 'pending')
 
     priority = taskproperty('priority', default=lambda: 1000)
     user = taskproperty('user', default=lambda: default_user.pw_name)
     group = taskproperty('user', default=lambda: default_group.gr_name)
-
 
 
     def _iter_properties(self):
@@ -91,13 +100,14 @@ class Task(object):
         self.is_frozen = False
 
         self._store = {}
-
-        self.pattern = 'generic'        
+ 
         self.func = func
         self.args = list(args or ())
         self.kwargs = dict(kwargs or {})
 
-        self.status = 'pending'
+        for name, prop in self._iter_properties():
+            if prop._default:
+                self._store[name] = prop._default()
 
         for k, v in extra.iteritems():
             if hasattr(self, k):
@@ -105,9 +115,8 @@ class Task(object):
             else:
                 raise AttributeError(k)
 
-        for name, prop in self._iter_properties():
-            if prop._default:
-                self._store.setdefault(name, prop._default())
+    def __repr__(self):
+        return '<%s %s>' % (self.__class__.__name__, self.id)
 
     def result(self, strict=True):
         """Retrieve the results of running this task.
@@ -186,31 +195,39 @@ class Task(object):
         self.assert_graph_ids()
         for task in list(self._iter_linearized()):
             task._run()
-        return self._store.setdefault('result', None)
+        return self.result()
 
 
     # For the queue to use:
     # =====================
 
-    def save(self):
+    def save(self, keys=None):
         if not self.queue:
             raise RuntimeError('task needs a queue to be saved')
-        self.queue.redis.hmset(self.id, self._freeze())
+
+        data = self._freeze()
+        if keys:
+            data = dict((k, data[k]) for k in keys)
+
+        self.queue.redis.hmset(self.id, data)
 
     def _run(self):
         """Find the pattern handler, call it, and catch errors."""
 
-        pattern_name = self.pattern
-        pattern_func = aque.patterns.registry.get(pattern_name, pattern_name)
-        pattern_func = decode_callable(pattern_func)
-
-        if pattern_func is None:
-            raise ValueError('no aque pattern %r' % pattern_name)
-
-        # log.debug('handling task %r with %r' % (self['id'], pattern))
-        
         try:
+
+            pattern_name = self.pattern
+            pattern_func = aque.patterns.registry.get(pattern_name, pattern_name)
+            pattern_func = decode_callable(pattern_func)
+
+            if pattern_func is None:
+                raise ValueError('no aque pattern %r' % pattern_name)
+
+            # log.debug('handling task %r with %r' % (self['id'], pattern))
+            
             pattern_func(self)
+            return self.result()
+
         except Exception as e:
             self.status = 'error'
             if e.args:
@@ -220,16 +237,33 @@ class Task(object):
                 e.__class__.__name__,
             )
             self._store['exception'] = e
-            raise
+            raise e
 
     def _freeze(self):
         res = {}
         for name, prop in self._iter_properties():
             value = prop.__get__(self)
-            if prop._reduce:
-                value = prop._reduce(value)
-            res[name] = value
+            if prop._dump:
+                value = prop._dump(self, value)
+            res[name] = encode_if_required(value)
         return res
+
+    @classmethod
+    def _thaw(cls, queue, id, raw):
+        self = cls()
+        self.queue = queue
+        self.id = id
+        for name, prop in self._iter_properties():
+            try:
+                value = raw.pop(name)
+            except KeyError:
+                pass
+            else:
+                value = decode_if_possible(value)
+                if prop._load:
+                    value = prop._load(self, value)
+                self._store[name] = value
+        return self
 
 
     # For patterns to use:

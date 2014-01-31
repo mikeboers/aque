@@ -17,10 +17,15 @@ setup(
         'redis',
     ],
     
+    scripts=[
+        'scripts/aque',
+    ],
+    
     entry_points={
         'aque_patterns': [
             'generic = aque.patterns.generic:do_generic_task',
             'reduce_children = aque.patterns.reduce:do_reduce_task',
+            'shell = aque.patterns.shell:do_shell_task',
         ],
     },
 

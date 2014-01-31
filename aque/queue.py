@@ -3,17 +3,18 @@ import itertools
 import os
 import pwd
 
+from redis import Redis
 from aque.task import Task
 
 
 class Queue(object):
 
-    def __init__(self, redis, name='aque'):
+    def __init__(self, redis=None, name='aque'):
 
-        self.redis = redis
+        self.redis = redis or Redis()
         self.name = name
 
-        self._dbid = redis.connection_pool.connection_kwargs['db']
+        self._dbid = self.redis.connection_pool.connection_kwargs['db']
 
     def format_key(self, format, *args, **kwargs):
         if kwargs.pop('_db', None):
@@ -47,7 +48,10 @@ class Queue(object):
 
         task.queue = self
         task.save()
-        
+
         return task
+
+    def load_task(self, tid):
+        return Task._thaw(self, tid, self.redis.hgetall(tid))
 
 
