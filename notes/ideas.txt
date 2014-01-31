@@ -104,34 +104,38 @@ For now use the synchonous API. Later figure out how to do it on Redis.
 Unsorted
 ========
 
-- rename Task -> Task?
+- it is too confusing with the Task being a dict, but not being supposed to
+  actually store stuff that way.
 
-- task.log -> logger
-- func -> target for compatibility with threading/multiprocessing, or "fn" for compatibility with futures?
-  if first arg of a Task is callable, then it is the func
-
-- does task.error() raise an exception?
-
-- add "class" to task to specify the Python class; is "type" and "class" then confusing?
-  - names for the pattern:
-    - type (too generic)
-    - pattern
-    - processor
-    - prototype
-    - dispatcher
-    - pattern
-    - executor
-  - names for the Python class:
-    - class
-    - type (too generic)
-    - constructor
-  - best selection: "pattern" and "class"
+  - assume that once the Task has been frozen and stored there are no changes
+    allowed EXCEPT to those specifically marked, e.g. status, result, error, etc
+  - perhaps it would make sense to have a specification and a runtime that one
+    is allowed to periodically update:
+        static:
+            - func, args, kwargs
+            - pattern, class,
+            - priority, etc..
+        dynamic:
+            - status
+            - result, error, error_*
+            - 
 
 
-- "args" value of "children" assembles args from results of children, and "dependencies" is similar
-    - same as: func(*(child.result() for child in self.children))
+
+- task.args():
+    - self['args'] == 'children' assembles args from results of children
+    - self['args'] == 'dependencies' is similar
 
 - task.__getitem__ could eval 'attr.func' and 'attr.expr' before looking for 'attr'
+
+- task.lookup(name, eval=True, walk=True)
+    - lookup a name in this task, then the parent, all the way to the top
+
+- Task.cast(input_)
+
+- task.backrefs = set()
+    - set of Tasks which list this as a child or dependency
+    - could be built by .freeze(), or similar
 
 - Task class abstracts away all of the storage:
 
@@ -141,12 +145,13 @@ Unsorted
     )
 
     task[name] -> underlying dict-style store
-    task.attr(name) -> "{attr}_func" gets called or "{attr}_expr" gets evaluated
     
     # Sync and async API.
     task.complete(result)
     task.error(message or exception)
+
     task.children() -> list of Tasks
+    task.dependencies() -> list of Tasks
 
     # For async patterns only.
     task.progress(count, max=None, message=None)
@@ -156,31 +161,6 @@ Unsorted
     task.cancel()
     task.retry(recursive=False)
 
-
-- task type is just a callable that takes a Task, registered via entrypoints
-
-    The successful completion of the callable does not signal success because it could be used to schedule a background process. Raising an exception does, however, signal an error.
-
-- "children" are subtasks, while "dependencies" are others parts of a pipeline
-
-- local, syncronous execution first makes sure the dependencies are good, then
-  it's children, then itself
-
-
-
-
-
-
-
-
-
-
-
-
-- different queuing/flow methods to join up various tasks
-    - pipe has results flow from one to the next
-    - reduce calls the task once for every dependant result
-
 - `aque` command-line to queue shell tasks
     - output specifies dependency for piping, e.g.:
         a=$(aque echo hello)
@@ -188,13 +168,7 @@ Unsorted
         aque --wait --results "$b"
 
 - "groups" or "child templates" allow to have tasks inherit from a template (to ease specification of hundreds of similar tasks)
-
-- perhaps every key should be stored in it's full form (with "$base:task:$jid") so that is is easy to recursively remove a task
-
-
-
-
-- it would be totally OK to do this with Postgres!
+    TaskTemplate() -> does not actually run, and modifies the returned children.
 
 - tools to look at with significant startup overhead:
     - REDline
@@ -202,21 +176,9 @@ Unsorted
     - one of Jon's image processing scripts, e.g.:
         ~/dev/fidata/hk_dpx_jsrenderpull.py dpxrender_VFX_PULL_030_090913.js | xargs -L24 -P30 ~/dev/fidata/scaler/hk_render_jsdpx.py -j dpxrender_VFX_PULL_030_090913.js
 
-
-- hkmp1 can git the hk1 redis server, and it is likely that the NT MacPros can do the same
-
-- see http://python-rq.org/
-
-- see https://github.com/percolate/redset
-
-- tasks should be able to specify subtasks without actually creating the objects, to simplify stuff such as chunking ranges of timecodes, etc. However, this doesn't make a ton of sense since each subtask will need to have a status in the end. Ergo, the simplest way is for the caller to manually chunk the task as it is specified. But how then can we get seperate statuses for each of the frames? We could do a map-reduce style arangement...
-
-- Go with a whole map-reduce concept for the whole thing? Each task is a map, and each level performs a reduce. Per-frame errors could be propigated all the way to the top level in a format such that when it is restarted, it is ok.
-
 - Different ways of specifying children:
-    - there is a "$base:task:$jid:child_ids" list of child task IDs
+    - a list of child IDs
     - "range": there is a "range_spec" key on the task
-    - "argset": there is a "$base:task:$jid:child_args" list of arguments for children
 
 - Python and bash APIs for fetching info about the current task. Communicated via environment variables.
 
@@ -260,4 +222,15 @@ Unsorted
 
 - the worker will need to run as root
 
+- `default` for json.dumps to look for __aque_reduce__ for custom serializations
+    - eventually returns '!!aque/reduced {}'.format(json.dumps(obj.__aque_reduce__))
+    - or returns {'!!': type, ...} or
+    - these are yaml-style tags, and look somewhat like shebangs
+
+- Task should be a wrapper around a dict instead of a subclass. Then it can
+  set the store to None when only given an ID, and load it all via Redis when
+  requested later.
+
+- task.freeze() -> dict with everything encoded via the schema
+- Task.cast(x)
 

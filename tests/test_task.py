@@ -8,9 +8,9 @@ class TestTaskBasics(TestCase):
     def test_children_mutability(self):
         parent = Task()
         child = Task()
-        parent.children().append(child)
-        self.assertEqual(len(parent.children()), 1)
-        self.assertIs(parent.children()[0], child)
+        parent.children.append(child)
+        self.assertEqual(len(parent.children), 1)
+        self.assertIs(parent.children[0], child)
 
     def test_incomplete_results(self):
         task = Task()
@@ -32,7 +32,7 @@ class TestOrder(TestCase):
         b = Task(func=functools.partial(res.append, 'b'))
         c = Task(func=functools.partial(res.append, 'c'))
 
-        a.children().extend((b, c))
+        a.children.extend((b, c))
         a.run()
 
         self.assertEqual(res, ['b', 'c', 'a'])
@@ -46,9 +46,9 @@ class TestOrder(TestCase):
         c = Task(func=functools.partial(res.append, 'c'))
         d = Task(func=functools.partial(res.append, 'd'))
 
-        a.children().extend((b, c))
-        b.children().append(d)
-        c.children().append(d)
+        a.children.extend((b, c))
+        b.children.append(d)
+        c.children.append(d)
 
         a.run()
 
@@ -59,8 +59,8 @@ class TestOrder(TestCase):
         a = Task()
         b = Task()
 
-        a.children().append(b)
-        b.children().append(a)
+        a.children.append(b)
+        b.children.append(a)
 
         self.assertRaises(DependencyError, a.run)
 
@@ -70,8 +70,8 @@ class TestOrder(TestCase):
         b = Task()
         c = Task()
 
-        a.children().extend((b, c))
-        b.children().append(c)
-        c.children().append(b)
+        a.children.extend((b, c))
+        b.children.append(c)
+        c.children.append(b)
 
         self.assertRaises(DependencyError, a.run)

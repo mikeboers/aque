@@ -15,7 +15,7 @@ def do_reduce_task(task):
         task.error('too many args; reduce expects 1, got %d' % len(args))
         return
 
-    sequence = [child.result() for child in task.children()]
+    sequence = [child.result() for child in task.children]
 
     # log.debug('reducing %r with %r and %r' % (sequence, func, args))
     

@@ -28,11 +28,9 @@ class Queue(object):
         user = pwd.getpwuid(os.getuid())
         group = grp.getgrgid(user.pw_gid)
 
-        task.setdefaults(
-            priority=1000,
-            user=user.pw_name,
-            group=group.gr_name,
-        )
+        task._static.setdefault('priority', 1000)
+        task._static.setdefault('user', user.pw_name)
+        task._static.setdefault('group', group.gr_name)
 
         id_num = self.redis.incr(self._format('task_counter'))
 

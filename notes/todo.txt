@@ -8,3 +8,4 @@ Overview
 - error handling for sync tasks
 - resuming sync tasks
 - async running
+    - submit all of the dependencies and children to the queue first
