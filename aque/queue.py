@@ -1,4 +1,5 @@
 import grp
+import itertools
 import os
 import pwd
 
@@ -14,33 +15,39 @@ class Queue(object):
 
         self._dbid = redis.connection_pool.connection_kwargs['db']
 
-    def _format(self, format, *args, **kwargs):
+    def format_key(self, format, *args, **kwargs):
         if kwargs.pop('_db', None):
             return ('{}@{}:' + format).format(self.name, self._dbid, *args)
         else:
             return ('{}:' + format).format(self.name, *args)
 
     def submit(self, task):
+        task = self._submit(task)
+        self.redis.rpush(self.format_key('pending_tasks'), task.id)
+        return task.id
+
+    def _submit(self, task):
 
         if not isinstance(task, Task):
-            task = Task(task)
+            if isinstance(task, dict):
+                task = Task(**task)
+            else:
+                raise TypeError('not a Task')
 
-        user = pwd.getpwuid(os.getuid())
-        group = grp.getgrgid(user.pw_gid)
+        if task.status != 'pending':
+            raise ValueError('task is not pending; got %r' % task.status)
 
-        task._store.setdefault('priority', 1000)
-        task._store.setdefault('user', user.pw_name)
-        task._store.setdefault('group', group.gr_name)
+        if task.id is None:
+            id_num = self.redis.incr(self.format_key('task_counter'))
+            task.id = self.format_key('task:{}', id_num)
 
-        id_num = self.redis.incr(self._format('task_counter'))
 
-        task.id = self._format('task:{}', id_num)
-        task.status = 'pending'
+        for subtask in itertools.chain(task.dependencies, task.children):
+            self._submit(subtask)
 
-        self.redis.hmset(task.id, task._store)
-        self.redis.rpush(self._format('pending_tasks'), task.id)
-        self.redis.publish(self._format('{}:status', id_num, _db=True), task.status)
+        task.queue = self
+        task.save()
+        
+        return task
 
-        task.is_frozen = True
-        return task.id
 

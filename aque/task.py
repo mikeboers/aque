@@ -1,7 +1,10 @@
 import collections
+import grp
 import itertools
 import logging
+import os
 import pkg_resources
+import pwd
 
 from aque.utils import decode_callable
 import aque.patterns
@@ -22,18 +25,19 @@ class TaskError(RuntimeError):
 
 class taskproperty(object):
 
-    def __init__(self, name, default=None):
+    def __init__(self, name, default=None, reduce=None):
         self.name = name
-        self.default = default
+        self._default = default
+        self._reduce = reduce
 
-    def __get__(self, obj, cls):
+    def __get__(self, obj, cls=None):
         if obj is None:
             return self
         try:
             return obj._store[self.name]
         except KeyError:
-            if self.default:
-                return obj._store.setdefault(self.name, self.default())
+            if self._default:
+                return obj._store.setdefault(self.name, self._default())
             raise AttributeError(self.name)
 
     def __set__(self, obj, value):
@@ -43,6 +47,14 @@ class taskproperty(object):
             obj._store[self.name] = value
 
 
+def reduce_task_list(input_):
+    return [x.id if isinstance(x, Task) else x for x in input_]
+
+
+default_user = pwd.getpwuid(os.getuid())
+default_group = grp.getgrgid(default_user.pw_gid)
+
+
 class Task(object):
 
     pattern = taskproperty('pattern')
@@ -50,16 +62,32 @@ class Task(object):
     args = taskproperty('args')
     kwargs = taskproperty('kwargs')
 
-    children = taskproperty('children', default=list)
-    dependencies = taskproperty('dependencies', default=list)
+    children = taskproperty('children', default=list, reduce=reduce_task_list)
+    dependencies = taskproperty('dependencies', default=list, reduce=reduce_task_list)
 
     status = taskproperty('status')
 
+    priority = taskproperty('priority', default=lambda: 1000)
+    user = taskproperty('user', default=lambda: default_user.pw_name)
+    group = taskproperty('user', default=lambda: default_group.gr_name)
+
+
+
+    def _iter_properties(self):
+        seen = set()
+        for base in self.__class__.__mro__:
+            for name, value in vars(base).iteritems():
+                if name in seen:
+                    continue
+                seen.add(name)
+                if isinstance(value, taskproperty):
+                    yield name, value
 
 
     def __init__(self, func=None, args=None, kwargs=None, **extra):
 
         self.id = None
+        self.queue = None
         self.is_frozen = False
 
         self._store = {}
@@ -75,7 +103,11 @@ class Task(object):
             if hasattr(self, k):
                 setattr(self, k, v)
             else:
-                self[k] = v
+                raise AttributeError(k)
+
+        for name, prop in self._iter_properties():
+            if prop._default:
+                self._store.setdefault(name, prop._default())
 
     def result(self, strict=True):
         """Retrieve the results of running this task.
@@ -106,25 +138,10 @@ class Task(object):
         else:
             raise TaskIncomplete('task is %s' % self.status)
 
-    def error(self, message):
-        """Signal that the task has errored while running.
 
-        :returns: A :class:`TaskError` that can be raised.
 
-        """
 
-        self._store['status'] = 'error'
-        self._store['error'] = message
 
-        # TODO: publish on redis
-        return TaskError(message)
-
-    def complete(self, result=None):
-        """Signal that the task has completed running."""
-
-        self._store['status'] = 'success'
-        self._store['result'] = result
-        # TODO: publish on redis
 
     def assert_graph_ids(self, base=None, index=1, _visited=None):
         """Make sure the entire DAG rooted at this point has IDs."""
@@ -163,11 +180,22 @@ class Task(object):
         _visited.remove((self, 'incomplete'))
         yield self
 
+
+
     def run(self):
         self.assert_graph_ids()
         for task in list(self._iter_linearized()):
             task._run()
         return self._store.setdefault('result', None)
+
+
+    # For the queue to use:
+    # =====================
+
+    def save(self):
+        if not self.queue:
+            raise RuntimeError('task needs a queue to be saved')
+        self.queue.redis.hmset(self.id, self._freeze())
 
     def _run(self):
         """Find the pattern handler, call it, and catch errors."""
@@ -194,6 +222,38 @@ class Task(object):
             self._store['exception'] = e
             raise
 
+    def _freeze(self):
+        res = {}
+        for name, prop in self._iter_properties():
+            value = prop.__get__(self)
+            if prop._reduce:
+                value = prop._reduce(value)
+            res[name] = value
+        return res
+
+
+    # For patterns to use:
+    # ====================
+
+    def complete(self, result=None):
+        """Signal that the task has completed running."""
+
+        self._store['status'] = 'success'
+        self._store['result'] = result
+        # TODO: publish on redis
+
+    def error(self, message):
+        """Signal that the task has errored while running.
+
+        :returns: A :class:`TaskError` that can be raised.
+
+        """
+
+        self._store['status'] = 'error'
+        self._store['error'] = message
+
+        # TODO: publish on redis
+        return TaskError(message)
 
     def progress(self, value, max=None, message=None):
         """Notify the web UI of progress."""

@@ -21,6 +21,9 @@ class TestTaskBasics(TestCase):
         task.error('dummy')
         self.assertRaises(TaskError, task.result)
 
+    def test_init_attrs(self):
+        self.assertRaises(AttributeError, Task, doesnotexist=True)
+
 
 class TestOrder(TestCase):
 
