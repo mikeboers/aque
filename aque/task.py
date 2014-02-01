@@ -25,64 +25,109 @@ class TaskError(RuntimeError):
 
 class taskproperty(object):
 
-    def __init__(self, name, default=None, load=None, dump=None):
+    def __new__(base_cls, name, *args, **kwargs):
+        if isinstance(name, type):
+            cls = type(name.__name__.split('.')[-1], (name, base_cls), {})
+        else:
+            cls = base_cls
+        return super(taskproperty, base_cls).__new__(cls, name, *args, **kwargs)
+
+    def __init__(self, name, default=None, expand=None, reduce=None):
+        if isinstance(name, type):
+            name = name.__name__.split('.')[-1]
         self.name = name
         self._default = default
-        self._load = load
-        self._dump = dump
+        self._expand = expand
+        self._reduce = reduce
+
+    def get(self, obj, reduce=False):
+        try:
+            value = obj._store[self.name]
+        except KeyError:
+            raise AttributeError(self.name)
+        else:
+            if reduce:
+                value = self.reduce(obj, value)
+            return value
 
     def __get__(self, obj, cls=None):
         if obj is None:
             return self
-        try:
-            return obj._store[self.name]
-        except KeyError:
-            raise AttributeError(self.name)
+        else:
+            return self.get(obj)
 
-    def __set__(self, obj, value):
+    def set(self, obj, value, expand=False):
         if obj.is_frozen:
             raise RuntimeError('task has been frozen')
         else:
+            if expand:
+                value = self.expand(obj, value)
             obj._store[self.name] = value
 
+    def __set__(self, obj, value):
+        self.set(obj, value)
 
-def dump_task_list(task, tasks):
-    return [x.id if isinstance(x, Task) else x for x in tasks]
-def load_task_list(task, tids):
-    return [task.queue.load_task(tid) if isinstance(tid, basestring) else tid for tid in tids]
+    def reduce(self, obj, value):
+        if self._reduce:
+            return self._reduce(obj, value)
+        else:
+            return value
+
+    def expand(self, obj, value):
+        if self._expand:
+            return self._expand(obj, value)
+        else:
+            return value
+
+    def default(self, obj):
+        if self._default:
+            return self._default(obj)
+        else:
+            raise ValueError()
+
+    def setdefault(self, obj):
+        try:
+            value = self.default(obj)
+        except ValueError:
+            pass
+        else:
+            self.set(obj, value)
 
 
-default_user = pwd.getpwuid(os.getuid())
-default_group = grp.getgrgid(default_user.pw_gid)
+class subtaskproperty(taskproperty):
+
+    def default(self, obj):
+        return []
+
+    def reduce(self, obj, tasks):
+        return [x.id if isinstance(x, Task) else x for x in tasks]
+
+    def expand(self, obj, task_ids):
+        return [task.queue.expand_task(tid) if isinstance(tid, basestring) else tid for tid in task_ids]
+
+
+_default_user = pwd.getpwuid(os.getuid())
+_default_group = grp.getgrgid(_default_user.pw_gid)
 
 
 class Task(object):
 
-    pattern = taskproperty('pattern', default=lambda: 'generic')
+    pattern = taskproperty('pattern', default=lambda task: 'generic')
     func = taskproperty('func')
     args = taskproperty('args')
     kwargs = taskproperty('kwargs')
 
-    children = taskproperty('children',
-        default=list,
-        dump=dump_task_list,
-        load=load_task_list,
-    )
+    children = subtaskproperty('children')
+    dependencies = subtaskproperty('dependencies')
 
-    dependencies = taskproperty('dependencies',
-        default=list,
-        dump=dump_task_list,
-        load=load_task_list,
-    )
+    status = taskproperty('status', default=lambda task: 'pending')
 
-    status = taskproperty('status', default=lambda: 'pending')
-
-    priority = taskproperty('priority', default=lambda: 1000)
-    user = taskproperty('user', default=lambda: default_user.pw_name)
-    group = taskproperty('user', default=lambda: default_group.gr_name)
+    priority = taskproperty('priority', default=lambda task: 1000)
+    user = taskproperty('user', default=lambda task: _default_user.pw_name)
+    group = taskproperty('user', default=lambda task: _default_group.gr_name)
 
 
-    def _iter_properties(self):
+    def iter_properties(self):
         seen = set()
         for base in self.__class__.__mro__:
             for name, value in vars(base).iteritems():
@@ -105,9 +150,8 @@ class Task(object):
         self.args = list(args or ())
         self.kwargs = dict(kwargs or {})
 
-        for name, prop in self._iter_properties():
-            if prop._default:
-                self._store[name] = prop._default()
+        for name, prop in self.iter_properties():
+            prop.setdefault(self)
 
         for k, v in extra.iteritems():
             if hasattr(self, k):
@@ -241,10 +285,8 @@ class Task(object):
 
     def _freeze(self):
         res = {}
-        for name, prop in self._iter_properties():
-            value = prop.__get__(self)
-            if prop._dump:
-                value = prop._dump(self, value)
+        for name, prop in self.iter_properties():
+            value = prop.get(self, reduce=True)
             res[name] = encode_if_required(value)
         return res
 
@@ -253,16 +295,14 @@ class Task(object):
         self = cls()
         self.queue = queue
         self.id = id
-        for name, prop in self._iter_properties():
+        for name, prop in self.iter_properties():
             try:
                 value = raw.pop(name)
             except KeyError:
                 pass
             else:
                 value = decode_if_possible(value)
-                if prop._load:
-                    value = prop._load(self, value)
-                self._store[name] = value
+                prop.set(self, value, expand=True)
         return self
 
 
