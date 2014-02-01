@@ -25,25 +25,25 @@ class TaskError(RuntimeError):
 
 class taskproperty(object):
 
-    def __new__(base_cls, name, *args, **kwargs):
+    def __new__(base_cls, name, **kwargs):
         if isinstance(name, type):
             cls = type(name.__name__.split('.')[-1], (name, base_cls), {})
         else:
             cls = base_cls
-        return super(taskproperty, base_cls).__new__(cls, name, *args, **kwargs)
+        return super(taskproperty, base_cls).__new__(cls, name, **kwargs)
 
-    def __init__(self, name, default=None, expand=None, reduce=None):
+    def __init__(self, name, **kwargs):
+
         if isinstance(name, type):
             name = name.__name__.split('.')[-1]
         self.name = name
-        self._default = default
-        self._expand = expand
-        self._reduce = reduce
+        self.attr_name = '_' + name
+        self.callbacks = kwargs
 
     def get(self, obj, reduce=False):
         try:
-            value = obj._store[self.name]
-        except KeyError:
+            value = getattr(obj, self.attr_name)
+        except AttributeError:
             raise AttributeError(self.name)
         else:
             if reduce:
@@ -62,28 +62,34 @@ class taskproperty(object):
         else:
             if expand:
                 value = self.expand(obj, value)
-            obj._store[self.name] = value
+            setattr(obj, self.attr_name, value)
 
     def __set__(self, obj, value):
         self.set(obj, value)
 
     def reduce(self, obj, value):
-        if self._reduce:
-            return self._reduce(obj, value)
-        else:
+        try:
+            func = self.callbacks['reduce']
+        except KeyError:
             return value
+        else:
+            return func(obj, value)
 
     def expand(self, obj, value):
-        if self._expand:
-            return self._expand(obj, value)
-        else:
+        try:
+            func = self.callbacks['expand']
+        except KeyError:
             return value
+        else:
+            return func(obj, value)
 
     def default(self, obj):
-        if self._default:
-            return self._default(obj)
+        try:
+            func = self.callbacks['default']
+        except KeyError:
+            raise ValueError
         else:
-            raise ValueError()
+            return func(obj)
 
     def setdefault(self, obj):
         try:
@@ -143,12 +149,12 @@ class Task(object):
         self.id = None
         self.queue = None
         self.is_frozen = False
-
-        self._store = {}
  
         self.func = func
         self.args = list(args or ())
         self.kwargs = dict(kwargs or {})
+
+        self._result = self._error = self._error_type = self._exception = None
 
         for name, prop in self.iter_properties():
             prop.setdefault(self)
@@ -173,17 +179,16 @@ class Task(object):
         """
 
         if self.status == 'success':
-            return self._store.get('result')
+            return self._result
 
         elif not strict:
             return
 
         elif self.status == 'error':
-            exc = self._store.get('exception')
-            if exc:
-                raise exc
-            message = '{} from {}'.format(self._store.get('error', 'unknown'), self.id)
-            type_ = self._store.get('error_type', TaskError)
+            if self._exception:
+                raise self._exception
+            message = '{} from {}'.format(self._error, self.id)
+            type_ = self._error_type or TaskError
             if isinstance(type_, basestring):
                 type_ = getattr(__builtins__, type_, TaskError)
             raise type_(message)
@@ -275,12 +280,12 @@ class Task(object):
         except Exception as e:
             self.status = 'error'
             if e.args:
-                self._store['error'] = e.args[0]
-            self._store['error_type'] = '{}.{}'.format(
+                self._error = e.args[0]
+            self._error_type = '{}.{}'.format(
                 e.__class__.__module__,
                 e.__class__.__name__,
             )
-            self._store['exception'] = e
+            self._exception = e
             raise e
 
     def _freeze(self):
@@ -312,8 +317,8 @@ class Task(object):
     def complete(self, result=None):
         """Signal that the task has completed running."""
 
-        self._store['status'] = 'success'
-        self._store['result'] = result
+        self.status = 'success'
+        self._result = result
         # TODO: publish on redis
 
     def error(self, message):
@@ -323,8 +328,8 @@ class Task(object):
 
         """
 
-        self._store['status'] = 'error'
-        self._store['error'] = message
+        self.status = 'error'
+        self._error = message
 
         # TODO: publish on redis
         return TaskError(message)
