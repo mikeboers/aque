@@ -95,21 +95,20 @@ class taskproperty(object):
         try:
             value = self.default(obj)
         except ValueError:
-            pass
-        else:
-            self.set(obj, value)
+            value = None
+        self.set(obj, value)
 
 
 class subtaskproperty(taskproperty):
 
-    def default(self, obj):
+    def default(self, task):
         return []
 
-    def reduce(self, obj, tasks):
+    def reduce(self, task, tasks):
         return [x.id if isinstance(x, Task) else x for x in tasks]
 
-    def expand(self, obj, task_ids):
-        return [task.queue.expand_task(tid) if isinstance(tid, basestring) else tid for tid in task_ids]
+    def expand(self, task, task_ids):
+        return [task.queue.load_task(tid) if isinstance(tid, basestring) else tid for tid in task_ids]
 
 
 _default_user = pwd.getpwuid(os.getuid())
@@ -120,8 +119,8 @@ class Task(object):
 
     pattern = taskproperty('pattern', default=lambda task: 'generic')
     func = taskproperty('func')
-    args = taskproperty('args')
-    kwargs = taskproperty('kwargs')
+    args = taskproperty('args', default=lambda task: ())
+    kwargs = taskproperty('kwargs', default=lambda task: {})
 
     children = subtaskproperty('children')
     dependencies = subtaskproperty('dependencies')
@@ -144,30 +143,31 @@ class Task(object):
                     yield name, value
 
 
-    def __init__(self, func=None, args=None, kwargs=None, **extra):
+    def __init__(self, *args, **kwargs):
 
         self.id = None
         self.queue = None
         self.is_frozen = False
- 
-        self.func = func
-        self.args = list(args or ())
-        self.kwargs = dict(kwargs or {})
 
         self._result = self._error = self._error_type = self._exception = None
 
         for name, prop in self.iter_properties():
             prop.setdefault(self)
 
-        for k, v in extra.iteritems():
-            if hasattr(self, k):
-                setattr(self, k, v)
+        for key, value in zip(('func', 'args', 'kwargs'), args):
+            kwargs[key] = value
+        for key, value in kwargs.iteritems():
+            if hasattr(self, key):
+                setattr(self, key, value)
             else:
-                raise AttributeError(k)
+                raise AttributeError(key)
 
     def __repr__(self):
         return '<%s %s>' % (self.__class__.__name__, self.id)
 
+    def __eq__(self, other):
+        return self is other or self.id and self.id == other.id
+    
     def result(self, strict=True):
         """Retrieve the results of running this task.
 

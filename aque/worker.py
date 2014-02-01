@@ -13,7 +13,7 @@ class Worker(object):
     def run(self):
         while True:
 
-            task = self.find_new_work()
+            task = self.capture_task()
             if task:
                 print 'found new work:', task
                 print 'running...'
@@ -29,12 +29,13 @@ class Worker(object):
                 task.save()
 
             else:
-                print 'no work found'
-            
-            time.sleep(1)
+                print 'no work found; sleeping...'
+                time.sleep(1)
 
+    def capture_task(self):
+        return next(self.iter_open_tasks(), None)
 
-    def find_new_work(self):
+    def iter_open_tasks(self):
 
         task_ids = set(self.redis.lrange(self.queue.format_key('pending_tasks'), 0, -1))
 
@@ -56,7 +57,7 @@ class Worker(object):
                 continue
 
             if task.status == 'pending':
-                return task
+                yield task
 
 
 
