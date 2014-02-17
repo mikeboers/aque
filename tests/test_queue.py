@@ -4,20 +4,22 @@ from . import *
 class TestQueueBasics(TestCase):
 
     def setUp(self):
-        self.redis = Redis()
-        self.queue = Queue(self.redis, name='queue_basics')
+        self.name = self.__class__.__name__
+        self.broker = Broker(name=self.name)
+        self.queue = Queue(broker=self.broker)
+        self.redis = self.broker._redis
         
-        existing = self.redis.keys('queue_basics:*')
+        existing = self.redis.keys(self.name + ':*')
         if existing:
             self.redis.delete(*existing)
 
     def test_basic_submit(self):
 
         jid = self.queue.submit({})
-        self.assertEqual(jid, 'queue_basics:task:1')
+        self.assertEqual(jid, 'TestQueueBasics:task:1')
 
-        self.assertEqual(self.redis.hget(jid, 'status'), 'pending')
-        self.assertEqual(self.redis.hget(jid, 'priority'), '1000')
+        self.assertEqual(self.broker.get(jid, 'status'), 'pending')
+        self.assertEqual(self.broker.get(jid, 'priority'), 1000)
 
     def test_manual_child_submit(self):
 
@@ -27,8 +29,8 @@ class TestQueueBasics(TestCase):
         p = Task(children=[c])
         self.queue.submit(p)
 
-        self.assertEqual(c.id, 'queue_basics:task:1')
-        self.assertEqual(p.id, 'queue_basics:task:2')
+        self.assertEqual(c.id, 'TestQueueBasics:task:1')
+        self.assertEqual(p.id, 'TestQueueBasics:task:2')
 
     def test_auto_child_submit(self):
 
@@ -37,8 +39,8 @@ class TestQueueBasics(TestCase):
 
         self.queue.submit(p)
 
-        self.assertEqual(p.id, 'queue_basics:task:1')
-        self.assertEqual(c.id, 'queue_basics:task:2')
+        self.assertEqual(p.id, 'TestQueueBasics:task:1')
+        self.assertEqual(c.id, 'TestQueueBasics:task:2')
 
 
 

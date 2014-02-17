@@ -5,10 +5,12 @@ class TestWorkerBasics(TestCase):
 
     def setUp(self):
 
-        self.redis = Redis()
-        self.queue = Queue(self.redis, name='worker_basics')
+        self.name = self.__class__.__name__
+        self.broker = Broker(name=self.name)
+        self.redis = self.broker._redis
+        self.queue = Queue(broker=self.broker)
         
-        existing = self.redis.keys('worker_basics:*')
+        existing = self.redis.keys(self.name + ':*')
         if existing:
             self.redis.delete(*existing)
 
@@ -20,7 +22,7 @@ class TestWorkerBasics(TestCase):
 
         self.queue.submit(a)
 
-        worker = Worker(self.queue)
+        worker = Worker(self.broker)
         self.assertEqual([b, c], list(worker.iter_open_tasks()))
 
         self.redis.hset(b.id, 'status', 'success')

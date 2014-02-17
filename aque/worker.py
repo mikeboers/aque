@@ -3,12 +3,13 @@ import pprint
 import time
 import traceback
 
+from aque.task import Task
+
 
 class Worker(object):
 
-    def __init__(self, queue):
-        self.queue = queue
-        self.redis = queue.redis
+    def __init__(self, broker):
+        self.broker = broker
 
     def run(self):
         while True:
@@ -37,9 +38,9 @@ class Worker(object):
 
     def iter_open_tasks(self):
 
-        task_ids = set(self.redis.lrange(self.queue.format_key('pending_tasks'), 0, -1))
+        task_ids = self.broker.get_pending_tasks()
 
-        tasks = [self.queue.load_task(id_) for id_ in task_ids]
+        tasks = [self.broker.load_task(tid) for tid in task_ids]
         tasks.sort(key=lambda t: (t.priority, t.id), reverse=True)
 
         considered = set()

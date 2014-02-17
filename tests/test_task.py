@@ -22,7 +22,7 @@ class TestTaskBasics(TestCase):
         self.assertRaises(TaskError, task.result)
 
     def test_init_attrs(self):
-        self.assertRaises(AttributeError, Task, doesnotexist=True)
+        self.assertRaises(TypeError, Task, doesnotexist=True)
 
 
 class TestOrder(TestCase):

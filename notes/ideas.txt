@@ -173,15 +173,7 @@ Unsorted
     current_task().top_level.description
     current_task().set_status('suspend')
 
-- "python_eval" type could have "py_setup", "py_main" and "py_teardown",
-  all of which run in the same locals, and have the task spec as the globals. Then
-  if you specify a list of locals, it can walk across them all processing them, and
-  updating the status of each child
-
 - tasks/subtasks/subsubtasks are traversed in a depth-first manner, and an upper tier may only be captured by a worker if all of the children are complete
-
-- is it possible to have this implemented in a manner so that there isn't a
-  master server, but instead it is ALL through redis?
 
 - have a concurrent.futures interface as well
 
@@ -215,10 +207,58 @@ Unsorted
     - or returns {'!!': type, ...} or
     - these are yaml-style tags, and look somewhat like shebangs
 
-- Task should be a wrapper around a dict instead of a subclass. Then it can
-  set the store to None when only given an ID, and load it all via Redis when
-  requested later.
+- task.as_dict()
+- Task.from_dict()
 
-- task.freeze() -> dict with everything encoded via the schema
-- Task.cast(x)
+- celery-style decorators:
+
+    @task
+    def my_task(x):
+        return str(x)
+
+    future = my_task(123)
+
+    @task
+    def my_second_task(f):
+        return str(f.result())
+
+    f2 = my_second_task(future) # waits on the first as a dependency!
+
+    @task
+    def my_third_task():
+
+        f = my_task(123)
+        r = f.result() # pauses this greenlet to depend upon the other result!
+
+- Task.yield_() could allow the controller to pause its greenlet in case a higher priority job came in.
+
+- Task should not have result/cancel/etc. methods; those should be on a Future (there may need to be a LocalFuture vs a "real" Future).
+    
+    The `Task` is for defining tasks, and for the worker to drive them. It is NOT used to interact with results.
+
+    Task.run() immediately returns results.
+
+    Queue.submit(task) returns a Future, where Future.task is a copy of the original Task. Task objects are never updated, and should just be assumed to be out of date.
+
+    The `Future` is how you interact with a copy of a specific task. It doesn't actually know anything about the task itself, except it can grab results and errors, and control execution.
+
+
+- broker.update(task, kwargs) sets the data locally, sets it in Redis, and does a publish to notify others.
+
+- task._changed_properties = set() of changed property values
+- task.commit(all=False) would push out all of the changes
+
+- workers can have their individual methods tested:
+    w = Worker(self.queue)
+    for t in w.iter_open_tasks():
+        # make sure they are in the right order
+
+- should all of the Redis stuff be moved into a Broker class, ala Celery?
+    - Broker.get_top_level()
+    - Broker.get(task_id, fields=[])
+    - Broker.store(task, fields=[])
+
+- should we be trying much less hard to make our data mash into Redis nicely? It just doesn't seem like it matters all that much.
+
+- How much can this depend on Redis? It could be "simpler" if it was highly coupled, but it could also make more sense if there was a broker that was reponsible for all of this.
 

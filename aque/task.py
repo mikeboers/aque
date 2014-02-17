@@ -108,7 +108,7 @@ class subtaskproperty(taskproperty):
         return [x.id if isinstance(x, Task) else x for x in tasks]
 
     def expand(self, task, task_ids):
-        return [task.queue.load_task(tid) if isinstance(tid, basestring) else tid for tid in task_ids]
+        return [task.broker.load_task(tid) if isinstance(tid, basestring) else tid for tid in task_ids]
 
 
 _default_user = pwd.getpwuid(os.getuid())
@@ -145,22 +145,25 @@ class Task(object):
 
     def __init__(self, *args, **kwargs):
 
-        self.id = None
-        self.queue = None
+        self.id = kwargs.pop('id', None)
+        self.broker = kwargs.pop('broker', None)
         self.is_frozen = False
 
         self._result = self._error = self._error_type = self._exception = None
 
-        for name, prop in self.iter_properties():
-            prop.setdefault(self)
-
         for key, value in zip(('func', 'args', 'kwargs'), args):
             kwargs[key] = value
-        for key, value in kwargs.iteritems():
-            if hasattr(self, key):
-                setattr(self, key, value)
+
+        for name, prop in self.iter_properties():
+            try:
+                value = kwargs.pop(name)
+            except KeyError:
+                prop.setdefault(self)
             else:
-                raise AttributeError(key)
+                prop.set(self, value, expand=True)
+
+        if kwargs:
+            raise TypeError('too many kwargs: %r' % sorted(kwargs))
 
     def __repr__(self):
         return '<%s %s>' % (self.__class__.__name__, self.id)
@@ -246,20 +249,6 @@ class Task(object):
             task._run()
         return self.result()
 
-
-    # For the queue to use:
-    # =====================
-
-    def save(self, keys=None):
-        if not self.queue:
-            raise RuntimeError('task needs a queue to be saved')
-
-        data = self._freeze()
-        if keys:
-            data = dict((k, data[k]) for k in keys)
-
-        self.queue.redis.hmset(self.id, data)
-
     def _run(self):
         """Find the pattern handler, call it, and catch errors."""
 
@@ -288,27 +277,12 @@ class Task(object):
             self._exception = e
             raise e
 
-    def _freeze(self):
+    def to_dict(self):
         res = {}
         for name, prop in self.iter_properties():
             value = prop.get(self, reduce=True)
             res[name] = encode_if_required(value)
         return res
-
-    @classmethod
-    def _thaw(cls, queue, id, raw):
-        self = cls()
-        self.queue = queue
-        self.id = id
-        for name, prop in self.iter_properties():
-            try:
-                value = raw.pop(name)
-            except KeyError:
-                pass
-            else:
-                value = decode_if_possible(value)
-                prop.set(self, value, expand=True)
-        return self
 
 
     # For patterns to use:

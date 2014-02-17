@@ -3,6 +3,7 @@ from urlparse import urlsplit
 from redis import Redis
 
 import aque.utils as utils
+from aque.task import Task
 
 
 class Broker(object):
@@ -50,9 +51,25 @@ class Broker(object):
     def setmany(self, tid, data):
         self._redis.hmset(tid, utils.encode_values_when_required(data))
 
+    def save_task(self, task):
+        self.setmany(task.id, task.to_dict())
+
+    def load_task(self, tid):
+        data = self.getall(tid)
+        data['id'] = tid
+        data['broker'] = self
+        return Task(**data)
+
     def set_status(self, tid, status):
         """Set status and publish to workers."""
         pass
+
+    def mark_as_pending(self, tid):
+        """Setup the task to run when able."""
+        self._redis.rpush(self._format_key('pending_tasks'), tid)
+
+    def get_pending_tasks(self):
+        return set(self._redis.lrange(self._format_key('pending_tasks'), 0, -1))
 
     def mark_as_complete(self, tid, result):
         """Store a result and set the status to "complete"."""

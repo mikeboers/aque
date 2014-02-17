@@ -1,6 +1,17 @@
 Overview
 ========
 
+- rename taskproperty.reduce/expand to dumps/loads or encode/decode?
+- document:
+    - data model of Tasks
+    - relationships of queues, brokers, tasks, and futures.
+
+- create a backend or broker class that handles all the communication with the DB
+- create a Future which references the broker to get stuff
+
+- migrate all results/error info to the Future class
+- task.run() returns a Future, and the task object is not affected
+
 - sync tasks could spawn threads, so Task.run() should have a timeout?
     - start all of the dependencies and children, and then wait for them all to be non-pending
     - will need to move the linearize logic into the run method

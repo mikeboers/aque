@@ -5,26 +5,19 @@ import pwd
 
 from redis import Redis
 from aque.task import Task
+from aque.broker import Broker
 
 
 class Queue(object):
 
-    def __init__(self, redis=None, name='aque'):
-
-        self.redis = redis or Redis()
-        self.name = name
-
-        self._dbid = self.redis.connection_pool.connection_kwargs['db']
-
-    def format_key(self, format, *args, **kwargs):
-        if kwargs.pop('_db', None):
-            return ('{}@{}:' + format).format(self.name, self._dbid, *args)
-        else:
-            return ('{}:' + format).format(self.name, *args)
+    def __init__(self, broker='redis://'):
+        if not isinstance(broker, Broker):
+            broker = Broker.from_url(broker)
+        self.broker = broker
 
     def submit(self, task):
         task = self._submit(task)
-        self.redis.rpush(self.format_key('pending_tasks'), task.id)
+        self.broker.mark_as_pending(task.id)
         return task.id
 
     def _submit(self, task):
@@ -39,19 +32,12 @@ class Queue(object):
             raise ValueError('task is not pending; got %r' % task.status)
 
         if task.id is None:
-            id_num = self.redis.incr(self.format_key('task_counter'))
-            task.id = self.format_key('task:{}', id_num)
+            task.id = self.broker.new_task_id()
 
 
         for subtask in itertools.chain(task.dependencies, task.children):
             self._submit(subtask)
 
-        task.queue = self
-        task.save()
+        self.broker.save_task(task)
 
         return task
-
-    def load_task(self, tid):
-        return Task._thaw(self, tid, self.redis.hgetall(tid))
-
-
