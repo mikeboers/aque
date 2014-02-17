@@ -13,21 +13,9 @@ class Broker(object):
 
     """
 
-    @classmethod
-    def from_url(cls, url):
-        url = urlsplit(url)
-        if url.scheme != 'redis':
-            raise ValueError('only supported broker is "redis://"')
-        redis = Redis(
-            url.hostname or 'localhost',
-            url.port or 6379,
-            int(url.path.strip('/')) if url.path else 0,
-        )
-        return cls(url.fragment or 'aque', redis)
-
-    def __init__(self, name='aque', redis=None):
-        self._redis = redis or Redis()
+    def __init__(self, name, redis):
         self._name = name
+        self._redis = redis
         self._db = self._redis.connection_pool.connection_kwargs['db']
 
     def _format_key(self, format, *args, **kwargs):

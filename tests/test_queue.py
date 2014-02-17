@@ -5,8 +5,8 @@ class TestQueueBasics(TestCase):
 
     def setUp(self):
         self.name = self.__class__.__name__
-        self.broker = Broker(name=self.name)
-        self.queue = Queue(broker=self.broker)
+        self.queue = Queue(name=self.name)
+        self.broker = self.queue.broker
         self.redis = self.broker._redis
         
         existing = self.redis.keys(self.name + ':*')

@@ -10,9 +10,11 @@ from aque.broker import Broker
 
 class Queue(object):
 
-    def __init__(self, broker='redis://'):
-        if not isinstance(broker, Broker):
-            broker = Broker.from_url(broker)
+    def __init__(self, name='aque', hostname='localhost', port=6379, db=0, broker=None, redis=None):
+        if not broker:
+            if not redis:
+                redis = Redis(hostname, port, db)
+            broker = Broker(name=name, redis=redis)
         self.broker = broker
 
     def submit(self, task):

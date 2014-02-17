@@ -4,11 +4,10 @@ from . import *
 class TestWorkerBasics(TestCase):
 
     def setUp(self):
-
         self.name = self.__class__.__name__
-        self.broker = Broker(name=self.name)
+        self.queue = Queue(name=self.name)
+        self.broker = self.queue.broker
         self.redis = self.broker._redis
-        self.queue = Queue(broker=self.broker)
         
         existing = self.redis.keys(self.name + ':*')
         if existing:
