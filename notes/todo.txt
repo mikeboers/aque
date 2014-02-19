@@ -1,6 +1,23 @@
 Overview
 ========
 
+- Queue should expose the futures executor API:
+    queue.submit(func, *args, **kwargs)
+    queue.submit_ex(func, args, kwargs, **opts)
+
+
+- Can tasks be represented by dicts alone?
+
+    - They could be, but then how do you do local execution nicely?
+    
+    - Figure out how to hook the YAML encoder, and then use that for serializing.
+        - See: yaml.add_constructor
+
+- Queue.submit should return futures with IDs.
+    - Futures should have children and dependencies lists to facilitate
+      the submission process.
+- The user's Tasks should never have an ID as they are prototypes.
+
 - rename taskproperty.reduce/expand to dumps/loads or encode/decode?
 - document:
     - data model of Tasks

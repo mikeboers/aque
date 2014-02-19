@@ -6,7 +6,7 @@ class TestBrokerBasics(TestCase):
 
         self.redis = Redis()
         self.name = self.__class__.__name__
-        self.broker = Broker(redis=self.redis, name=self.name)
+        self.broker = RedisBroker(redis=self.redis, name=self.name)
         
         existing = self.redis.keys(self.name + ':*')
         if existing:

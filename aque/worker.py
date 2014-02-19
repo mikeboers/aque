@@ -3,7 +3,8 @@ import pprint
 import time
 import traceback
 
-from aque.task import Task
+
+from aque.execution import execute_one
 
 
 class Worker(object):
@@ -40,24 +41,23 @@ class Worker(object):
 
         task_ids = self.broker.get_pending_tasks()
 
-        tasks = [self.broker.load_task(tid) for tid in task_ids]
-        tasks.sort(key=lambda t: (t.priority, t.id), reverse=True)
+        tasks = [(tid, self.broker.getall(tid)) for tid in task_ids]
+        tasks.sort(key=lambda (tid, task): (task.get('priority', 1000), tid), reverse=True)
 
         considered = set()
         while tasks:
 
-            task = tasks.pop(0)
-            considered.add(task)
+            tid, task = tasks.pop(0)
+            considered.add(tid)
 
             # TODO: make sure someone isn't working on it already.
 
-            tasks.extend(task.dependencies)
-            tasks.extend(task.children)
+            dep_ids = list(task.get('dependencies', ())) + list(task.get('children', ()))
 
-            if any(t.status != 'success' for t in itertools.chain(task.dependencies, task.children)):
-                continue
+            if any(self.broker.get(xid, 'status') != 'success' for xid in dep_ids):
+                tasks.extend((xid, self.broker.getall(xid)) for xid in dep_ids)
 
-            if task.status == 'pending':
+            if self.broker.get(tid, 'status') == 'pending':
                 yield task
 
 

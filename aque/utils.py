@@ -29,12 +29,12 @@ def decode_if_possible(encoded):
 
     try:
         return pickle.loads(encoded)
-    except PickleError:
+    except (TypeError, PickleError):
         pass
 
     try:
         return json.loads(encoded)
-    except ValueError:
+    except (TypeError, ValueError):
         pass
 
     return encoded

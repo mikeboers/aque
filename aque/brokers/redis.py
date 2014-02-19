@@ -1,12 +1,13 @@
+from __future__ import absolute_import
+
 from urlparse import urlsplit
 
 from redis import Redis
 
 import aque.utils as utils
-from aque.task import Task
 
 
-class Broker(object):
+class RedisBroker(object):
     """Handles all negotiation between the client (e.g. Python) and server.
 
     This initial broker backs onto Redis.
@@ -18,14 +19,7 @@ class Broker(object):
         self._redis = redis
         self._db = self._redis.connection_pool.connection_kwargs['db']
 
-    def _format_key(self, format, *args, **kwargs):
-        if kwargs.pop('_db', None):
-            return ('{}@{}:' + format).format(self._name, self._db, *args)
-        else:
-            return ('{}:' + format).format(self._name, *args)
-
-    def new_task_id(self):
-        return self._format_key('task:{}', self._redis.incr(self._format_key('task_counter')))
+    ## Low-level API
 
     def get(self, tid, key):
         return utils.decode_if_possible(self._redis.hget(tid, key))
@@ -39,22 +33,28 @@ class Broker(object):
     def setmany(self, tid, data):
         self._redis.hmset(tid, utils.encode_values_when_required(data))
 
-    def save_task(self, task):
-        self.setmany(task.id, task.to_dict())
+    ## Medium-level API
 
-    def load_task(self, tid):
-        data = self.getall(tid)
-        data['id'] = tid
-        data['broker'] = self
-        return Task(**data)
+    def _format_key(self, format, *args, **kwargs):
+        if kwargs.pop('_db', None):
+            return ('{}@{}:' + format).format(self._name, self._db, *args)
+        else:
+            return ('{}:' + format).format(self._name, *args)
+
+    def new_task_id(self):
+        return self._format_key('task:{}', self._redis.incr(self._format_key('task_counter')))
+
+
+    ## High-level API
 
     def set_status(self, tid, status):
         """Set status and publish to workers."""
-        pass
+        self.set(tid, 'status', status)
 
     def mark_as_pending(self, tid):
         """Setup the task to run when able."""
         self._redis.rpush(self._format_key('pending_tasks'), tid)
+        self.set_status(tid, 'pending')
 
     def get_pending_tasks(self):
         return set(self._redis.lrange(self._format_key('pending_tasks'), 0, -1))
