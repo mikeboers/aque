@@ -51,16 +51,23 @@ class Queue(object):
         task.setdefault('group', parent.get('group', _default_group.gr_name))
         task.setdefault('priority', 1000)
 
-        future = Future(self, self.broker.new_task_id())
+        future = self.broker.get_future(self.broker.new_task_id())
 
-        for subtask in task.get('dependencies', ()):
-            future.dependencies.append(self._submit(subtask, task, visited))
+        future.dependencies.extend(self._submit_dependencies(task, 'dependencies', visited))
         task['dependencies'] = [f.id for f in future.dependencies]
-
-        for subtask in task.get('children', ()):
-            future.children.append(self._submit(subtask, task, visited))
+        future.children.extend(self._submit_dependencies(task, 'children', visited))
         task['children'] = [f.id for f in future.children]
 
         self.broker.setmany(future.id, task)
 
         return future
+
+    def _submit_dependencies(self, task, key, visited):
+        for subtask in task.get(key, ()):
+            if isinstance(subtask, Future):
+                yield subtask
+            elif isinstance(subtask, dict):
+                yield self._submit(subtask, task, visited)
+            else:
+                yield self.broker.get_future(subtask)
+

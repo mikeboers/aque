@@ -53,12 +53,15 @@ class Worker(object):
             # TODO: make sure someone isn't working on it already.
 
             dep_ids = list(task.get('dependencies', ())) + list(task.get('children', ()))
+            deps = []
 
-            if any(self.broker.get(xid, 'status') != 'success' for xid in dep_ids):
+            if any(self.broker.get(xid, 'status') != 'complete' for xid in dep_ids):
                 tasks.extend((xid, self.broker.getall(xid)) for xid in dep_ids)
+                continue
 
-            if self.broker.get(tid, 'status') == 'pending':
-                yield task
+            status = self.broker.get(tid, 'status')
+            if status in ('pending', None):
+                yield tid, task
 
 
 

@@ -21,13 +21,23 @@ class TestQueueBasics(TestCase):
         self.assertEqual(self.broker.get(f.id, 'status'), 'pending')
         self.assertEqual(self.broker.get(f.id, 'priority'), 1000)
 
-    def test_manual_child_submit(self):
-        return
+    def test_manual_child_submit_by_id(self):
+
         cf = self.queue.submit_ex(task={})
         pf = self.queue.submit_ex(task={'children': [cf.id]})
 
-        self.assertEqual(c.id, 'TestQueueBasics:task:1')
-        self.assertEqual(p.id, 'TestQueueBasics:task:2')
+        self.assertEqual(cf.id, 'TestQueueBasics:task:1')
+        self.assertEqual(pf.id, 'TestQueueBasics:task:2')
+
+    def test_manual_child_submit_by_future(self):
+
+        cf = self.queue.submit_ex(task={})
+        pf = self.queue.submit_ex(task={'children': [cf]})
+
+        self.assertIs(cf, pf.children[0])
+        self.assertEqual(cf.id, 'TestQueueBasics:task:1')
+        self.assertEqual(pf.id, 'TestQueueBasics:task:2')
+
 
     def test_auto_child_submit(self):
 

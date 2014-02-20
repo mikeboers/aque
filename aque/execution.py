@@ -8,7 +8,8 @@ import pwd
 
 from aque.utils import decode_callable, encode_if_required, decode_if_possible
 import aque.patterns
-from aque.brokers import LocalBroker
+from .brokers import LocalBroker
+from .futures import Future
 
 
 log = logging.getLogger(__name__)
@@ -25,38 +26,66 @@ class TaskError(RuntimeError):
 
 
 
-def iter_linearized(task, _visited=None):
+def linearize_prototype(proto):
+    """Return a list of task prototypes ordered so that dependencies come first.
 
-    id_ = id(task)
-    _visited = _visited or set()
-    if (id_, 'incomplete') in _visited:
+    Output values are the input values, just re-organized.
+
+    :raises DependencyError: when there is a loop.
+
+    """
+    return list(_iter_linearized(proto, set()))
+
+
+def _iter_linearized(proto, visited):
+
+    # HACK: we assume that dependencies and children are task prototypes,
+    # and don't allow for instance IDs or futures.
+
+    id_ = id(proto)
+    if (id_, 'incomplete') in visited:
         raise DependencyError('dependency cycle')
-    if id_ in _visited:
+    if id_ in visited:
         return
 
-    _visited.add((id_, 'incomplete'))
-    _visited.add(id_)
+    visited.add((id_, 'incomplete'))
+    visited.add(id_)
 
-    for x in task.get('dependencies', ()):
-        for y in iter_linearized(x, _visited):
+    for x in proto.get('dependencies', ()):
+        for y in _iter_linearized(x, visited):
             yield y
-    for x in task.get('children', ()):
-        for y in iter_linearized(x, _visited):
+    for x in proto.get('children', ()):
+        for y in _iter_linearized(x, visited):
             yield y
 
-    _visited.remove((id_, 'incomplete'))
-    yield task
+    visited.remove((id_, 'incomplete'))
+    yield proto
 
 
-def execute(task, broker=None):
-    broker = broker or LocalBroker()
-    for task in list(iter_linearized(task)):
+def execute(task):
 
-        task['_id'] = tid = broker.new_task_id()
+    broker = LocalBroker()
 
+    id_to_tid = {}
+    def proto_tid(proto):
+        if isinstance(proto, Future):
+            return proto.id
+        elif isinstance(proto, dict):
+            return id_to_tid[id(proto)]
+        elif isinstance(proto, basestring):
+            return proto
+        else:
+            raise ValueError('expected prototype, Future, or task ID; got %r' % proto)
+
+    for task in linearize_prototype(task):
+
+        tid = broker.new_task_id()
+        id_to_tid[id(task)] = tid
+
+        # We need to modify the prototype to point at IDs for previous tasks.
         copy = dict(task)
-        copy['dependencies'] = [t['_id'] for t in task.get('dependencies', ())]
-        copy['children'] = [t['_id'] for t in task.get('children', ())]
+        copy['dependencies'] = [proto_tid(t) for t in task.get('dependencies', ())]
+        copy['children'] = [proto_tid(t) for t in task.get('children', ())]
 
         res = execute_one(broker, tid, copy)
 
@@ -75,15 +104,13 @@ def execute_one(broker, tid, task):
     pattern_func = decode_callable(pattern_func)
 
     if pattern_func is None:
-        raise TaskError('no aque pattern %r' % pattern_name)
-
-    # log.debug('handling task %r with %r' % (self['id'], pattern))
+        raise TaskError('unknown pattern %r' % pattern_name)
     
     try:
         pattern_func(broker, tid, task)
     except Exception as e:
         broker.mark_as_error(tid, e)
-        raise e
+        raise
     
     status = broker.get(tid, 'status')
     if status == 'complete':

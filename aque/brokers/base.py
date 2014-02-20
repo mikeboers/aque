@@ -1,11 +1,12 @@
 from abc import ABCMeta, abstractmethod
 
+from aque.futures import Future
+
 
 class Broker(object):
     """Handles all negotiation between the client (e.g. Python) and server."""
 
     __metaclass__ = ABCMeta
-
 
     ## Low-level API
 
@@ -33,6 +34,9 @@ class Broker(object):
     @abstractmethod
     def new_task_id(self):
         """Get a new ID for a task."""
+
+    def get_future(self, tid):
+        return Future(self, tid)
 
     ## High-level API
 

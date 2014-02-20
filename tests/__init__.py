@@ -1,3 +1,4 @@
+from pprint import pprint
 from unittest import TestCase
 
 from redis import Redis
