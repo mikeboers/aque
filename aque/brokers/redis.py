@@ -5,14 +5,11 @@ from urlparse import urlsplit
 from redis import Redis
 
 import aque.utils as utils
+from .base import Broker
 
 
-class RedisBroker(object):
-    """Handles all negotiation between the client (e.g. Python) and server.
-
-    This initial broker backs onto Redis.
-
-    """
+class RedisBroker(Broker):
+    """Primary asynchonous :class:`.Broker` that backs onto Redis."""
 
     def __init__(self, name, redis):
         self._name = name
@@ -56,7 +53,7 @@ class RedisBroker(object):
         self._redis.rpush(self._format_key('pending_tasks'), tid)
         self.set_status(tid, 'pending')
 
-    def get_pending_tasks(self):
+    def get_pending_task_ids(self):
         return set(self._redis.lrange(self._format_key('pending_tasks'), 0, -1))
 
     def mark_as_complete(self, tid, result):

@@ -1,13 +1,10 @@
 
 import aque.utils as utils
+from .base import Broker
 
 
-class LocalBroker(object):
-    """Handles all negotiation between the client (e.g. Python) and server.
-
-    This initial broker backs onto Redis.
-
-    """
+class LocalBroker(Broker):
+    """A :class:`.Broker` which holds everything in memory."""
 
     def __init__(self):
         self._id_counter = 0
@@ -58,9 +55,6 @@ class LocalBroker(object):
         except ValueError:
             pass
 
-    def get_pending_tasks(self):
+    def get_pending_task_ids(self):
         return list(self._pending_tasks)
-
-    def wait_for(self, tid, timeout=None):
-        raise ImplementationError('LocalBroker cannot wait')
 

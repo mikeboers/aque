@@ -39,7 +39,7 @@ class Worker(object):
 
     def iter_open_tasks(self):
 
-        task_ids = self.broker.get_pending_tasks()
+        task_ids = self.broker.get_pending_task_ids()
 
         tasks = [(tid, self.broker.getall(tid)) for tid in task_ids]
         tasks.sort(key=lambda (tid, task): (task.get('priority', 1000), tid), reverse=True)
