@@ -14,7 +14,7 @@ class TestWorkerBasics(TestCase):
         c = {'name': 'c'}
         a = {'name': 'a', 'children': [b, c]}
 
-        f = self.queue.submit_ex(task=a)
+        f = self.queue.submit_ex(**a)
 
         def open_names():
             open_tasks = list(worker.iter_open_tasks())

@@ -25,16 +25,14 @@ class Queue(object):
     def submit(self, func, *args, **kwargs):
         return self.submit_ex(func, args, kwargs)
 
-    def submit_ex(self, func=None, args=None, kwargs=None, task=None, **extra):
+    def submit_ex(self, func=None, args=None, kwargs=None, **prototype):
+        prototype.setdefault('func', func)
+        prototype.setdefault('args', args or ())
+        prototype.setdefault('kwargs', kwargs or {})
+        return self.submit_prototype(prototype)
 
-        task = dict(task or ())
-        task.update(extra)
-
-        task.setdefault('func', func)
-        task.setdefault('args', args or ())
-        task.setdefault('kwargs', kwargs or {})
-
-        future = self._submit(task)
+    def submit_prototype(self, prototype):
+        future = self._submit(prototype)
         self.broker.mark_as_pending(future.id)
         return future
 
