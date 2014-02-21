@@ -5,15 +5,15 @@ import subprocess
 log = logging.getLogger(__name__)
 
 
-def do_shell_task(task):
+def do_shell_task(broker, tid, task):
 
-    args = task.args
+    args = task['args']
 
     proc = subprocess.Popen(args)
     code = proc.wait()
 
     if code:
-        task.error('exit code %d' % code)
+        broker.mark_as_error(tid, ValueError(code))
     else:
-        task.complete()
+        broker.mark_as_complete(tid, 0)
 

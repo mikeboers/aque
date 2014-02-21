@@ -45,33 +45,12 @@ class RedisBroker(Broker):
 
     ## High-level API
 
-    def set_status(self, tid, status):
-        """Set status and publish to workers."""
-        self.set(tid, 'status', status)
-
     def mark_as_pending(self, tid):
         """Setup the task to run when able."""
+        super(RedisBroker, self).mark_as_pending(self)
         self._redis.rpush(self._format_key('pending_tasks'), tid)
-        self.set_status(tid, 'pending')
 
     def get_pending_task_ids(self):
         return set(self._redis.lrange(self._format_key('pending_tasks'), 0, -1))
 
-    def mark_as_complete(self, tid, result):
-        """Store a result and set the status to "complete"."""
-        pass
-
-    def mark_as_error(self, tid, exc):
-        """Store an error and set the status to "error"."""
-        pass
-
-    def wait_for(self, tid, timeout=None):
-        """Wait for a task to complete (or error).
-
-        :param float timeout: seconds to block; blocks forever if is ``None``.
-        :returns: result from the task.
-        :raises: errors from the task, or :exception:`Timeout`.
-
-        """
-        pass
 

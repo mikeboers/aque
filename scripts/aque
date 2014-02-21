@@ -2,11 +2,9 @@
 
 import sys
 
-from aque import Queue, Task
+from aque import Queue
 
 
 queue = Queue()
-task = Task(pattern='shell', args=sys.argv[1:])
-
-queue.submit(task)
-print task.id
+future = queue.submit_prototype({'pattern': 'shell', 'args': sys.argv[1:]})
+print future.id

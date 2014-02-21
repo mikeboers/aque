@@ -3,7 +3,7 @@ import itertools
 import os
 import pwd
 
-from aque.brokers import RedisBroker
+from aque.brokers.redis import RedisBroker
 from aque.futures import Future
 from aque.exceptions import DependencyError
 

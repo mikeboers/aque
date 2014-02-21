@@ -106,14 +106,13 @@ if __name__ == '__main__':
     import argparse
 
     from redis import Redis
-    from aque.queue import Queue
-
+    from aque.brokers.redis import RedisBroker
+    
 
     parser = argparse.ArgumentParser()
     parser.add_argument('queue', default='aque')
     args = parser.parse_args()
 
-    redis = Redis()
-    queue = Queue(redis, args.queue)
-    worker = Worker(queue)
-    worker.run()
+    broker = RedisBroker(args.queue, Redis())
+    worker = Worker(broker)
+    worker.run_forever()

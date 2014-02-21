@@ -2,7 +2,7 @@ from aque.exceptions import DependencyError, TaskIncomplete, TaskError
 from aque.futures import Future
 from aque.patterns import pattern
 from aque.queue import Queue
-from aque.brokers import LocalBroker
+from aque.brokers.local import LocalBroker
 from aque.worker import Worker
 
 
