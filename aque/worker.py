@@ -3,8 +3,10 @@ import pprint
 import time
 import traceback
 
+from aque.utils import decode_callable, encode_if_required, decode_if_possible
+import aque.patterns
+from .futures import Future
 
-from aque.execution import execute_one
 
 
 class Worker(object):
@@ -13,23 +15,10 @@ class Worker(object):
         self.broker = broker
 
     def run_one(self):
-
         tid, task = self.capture_task()
-
         if not tid:
             return False
-
-        print 'found new work:', tid
-        print 'running...'
-        try:
-            res = execute_one(self.broker, tid, task)
-        except:
-            traceback.print_exc()
-        else:
-            print 'Results:',
-            pprint.pprint(res)
-            print '---'
-
+        self._execute(tid, task)
         return True
 
     def run_to_end(self):
@@ -39,11 +28,13 @@ class Worker(object):
     def run_forever(self):
         while True:
             try:
-                if not self.run_one():
-                    print 'no work found; sleeping...'
-                    time.sleep(1)
+                self.run_to_end()
+                print 'end of queue; sleeping...'
+                time.sleep(1)
             except KeyboardInterrupt:
                 return
+            except Exception:
+                traceback.print_exc()
 
     def capture_task(self):
         return next(self.iter_open_tasks(), (None, None))
@@ -72,6 +63,34 @@ class Worker(object):
             status = self.broker.get(tid, 'status')
             if status in ('pending', None):
                 yield tid, task
+
+    def _execute(self, tid, task):
+        """Find the pattern handler, call it, and catch errors.
+
+        "dependencies" and "children" of the task MUST be a sequence of IDs.
+
+        """
+
+        pattern_name = task.get('pattern', 'generic')
+        pattern_func = aque.patterns.registry.get(pattern_name, pattern_name)
+        pattern_func = decode_callable(pattern_func)
+
+        if pattern_func is None:
+            raise TaskError('unknown pattern %r' % pattern_name)
+        
+        try:
+            pattern_func(self.broker, tid, task)
+        except Exception as e:
+            broker.mark_as_error(tid, e)
+            raise
+        
+        status = self.broker.get(tid, 'status')
+        if status == 'complete':
+            return self.broker.get(tid, 'result')
+        elif status == 'error':
+            raise self.broker.get(tid, 'exception')
+        else:
+            raise TaskIncomplete('incomplete status %r' % status)
 
 
 

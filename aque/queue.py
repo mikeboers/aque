@@ -5,7 +5,7 @@ import pwd
 
 from aque.brokers import RedisBroker
 from aque.futures import Future
-from aque.execution import DependencyError
+from aque.exceptions import DependencyError
 
 from redis import Redis
 
