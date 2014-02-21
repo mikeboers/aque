@@ -12,6 +12,7 @@ class RedisBroker(Broker):
     """Primary asynchonous :class:`.Broker` that backs onto Redis."""
 
     def __init__(self, name, redis):
+        super(RedisBroker, self).__init__()
         self._name = name
         self._redis = redis
         self._db = self._redis.connection_pool.connection_kwargs['db']

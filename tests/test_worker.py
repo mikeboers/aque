@@ -28,12 +28,5 @@ class TestWorkerBasics(TestCase):
         self.assertEqual(open_names(), ['c'])
 
         self.broker.mark_as_complete(f.children[1].id, 'result')
-        pprint(self.broker._tasks)
-
         self.assertEqual(open_names(), ['a'])
-
-
-
-
-
 

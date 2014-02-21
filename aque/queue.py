@@ -5,6 +5,7 @@ import pwd
 
 from aque.brokers import RedisBroker
 from aque.futures import Future
+from aque.execution import DependencyError
 
 from redis import Redis
 
@@ -32,16 +33,28 @@ class Queue(object):
         return self.submit_prototype(prototype)
 
     def submit_prototype(self, prototype):
-        future = self._submit(prototype)
+        future = self._submit(prototype, {}, {})
         self.broker.mark_as_pending(future.id)
         return future
 
-    def _submit(self, task, parent={}, visited=None):
+    def _submit(self, task, parent, futures):
 
-        visited = visited or set()
-        if id(task) in visited:
-            raise ValueError('recursive tasks')
-        visited.add(id(task))
+        # We need to linearize the submission. We pass around a mapping of
+        # object ids to their futures. If the id is in the dict but maps to None
+        # then we are in progress of creating that future, and there must be
+        # a dependency error.
+        id_ = id(task)
+        try:
+            future = futures[id_]
+        except KeyError:
+            pass
+        else:
+            if future:
+                return future
+            else:
+                raise DependencyError('dependency cycle')
+
+        futures[id_] = None
 
         task = dict(task)
         task.setdefault('pattern', 'generic')
@@ -51,21 +64,23 @@ class Queue(object):
 
         future = self.broker.get_future(self.broker.new_task_id())
 
-        future.dependencies.extend(self._submit_dependencies(task, 'dependencies', visited))
+        future.dependencies.extend(self._submit_dependencies(task, 'dependencies', futures))
         task['dependencies'] = [f.id for f in future.dependencies]
-        future.children.extend(self._submit_dependencies(task, 'children', visited))
+        future.children.extend(self._submit_dependencies(task, 'children', futures))
         task['children'] = [f.id for f in future.children]
 
         self.broker.setmany(future.id, task)
+        
+        futures[id_] = future
 
         return future
 
-    def _submit_dependencies(self, task, key, visited):
+    def _submit_dependencies(self, task, key, futures):
         for subtask in task.get(key, ()):
             if isinstance(subtask, Future):
                 yield subtask
             elif isinstance(subtask, dict):
-                yield self._submit(subtask, task, visited)
+                yield self._submit(subtask, task, futures)
             else:
                 yield self.broker.get_future(subtask)
 

@@ -8,7 +8,6 @@ import pwd
 
 from aque.utils import decode_callable, encode_if_required, decode_if_possible
 import aque.patterns
-from .brokers import LocalBroker
 from .futures import Future
 
 
@@ -64,7 +63,18 @@ def _iter_linearized(proto, visited):
 
 def execute(task):
 
+    from .brokers import LocalBroker
+    from .queue import Queue
+    from .worker import Worker
+
     broker = LocalBroker()
+    
+    if True:
+        queue = Queue(broker=broker)
+        future = queue.submit_prototype(task)
+        worker = Worker(broker)
+        worker.run_to_end()
+        return future.result(timeout=0)
 
     id_to_tid = {}
     def proto_tid(proto):

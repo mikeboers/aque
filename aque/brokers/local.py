@@ -7,6 +7,7 @@ class LocalBroker(Broker):
     """A :class:`.Broker` which holds everything in memory."""
 
     def __init__(self):
+        super(LocalBroker, self).__init__()
         self._id_counter = 0
         self._tasks = {}
         self._pending_tasks = []
@@ -34,13 +35,11 @@ class LocalBroker(Broker):
     ## High-level API
 
     def mark_as_pending(self, tid):
-        self._tasks.setdefault(tid, {})['status'] = 'pending'
+        super(LocalBroker, self).mark_as_pending(tid)
         self._pending_tasks.append(tid)
 
     def mark_as_complete(self, tid, result):
-        """Store a result and set the status to "complete"."""
-        self._tasks.setdefault(tid, {})['result'] = result
-        self._tasks[tid]['status'] = 'complete'
+        super(LocalBroker, self).mark_as_complete(tid, result)
         try:
             self._pending_tasks.remove(tid)
         except ValueError:
@@ -48,8 +47,7 @@ class LocalBroker(Broker):
 
     def mark_as_error(self, tid, exc):
         """Store an error and set the status to "error"."""
-        self._tasks.setdefault(tid, {})['exception'] = exc
-        self._tasks[tid]['status'] = 'error'
+        super(LocalBroker, self).mark_as_error(tid, exc)
         try:
             self._pending_tasks.remove(tid)
         except ValueError:

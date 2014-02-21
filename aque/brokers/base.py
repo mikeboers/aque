@@ -8,6 +8,9 @@ class Broker(object):
 
     __metaclass__ = ABCMeta
 
+    def __init__(self):
+        self.futures = {}
+
     ## Low-level API
 
     @abstractmethod
@@ -36,21 +39,27 @@ class Broker(object):
         """Get a new ID for a task."""
 
     def get_future(self, tid):
-        return Future(self, tid)
+        return self.futures.setdefault(tid, Future(self, tid))
 
     ## High-level API
 
-    @abstractmethod
     def mark_as_pending(self, tid):
         """Schedule a task to run."""
+        self.set(tid, 'status', 'pending')
 
-    @abstractmethod
     def mark_as_complete(self, tid, result):
         """Store a result and set the status to "complete"."""
+        self.setmany(tid, {'status': 'complete', 'result': result})
+        future = self.futures.get(tid)
+        if future:
+            future.set_result(result)
 
-    @abstractmethod
     def mark_as_error(self, tid, exc):
         """Store an error and set the status to "error"."""
+        self.setmany(tid, {'status': 'error', 'exception': exc})
+        future = self.futures.get(tid)
+        if future:
+            future.set_exception(exc)
 
     @abstractmethod
     def get_pending_task_ids(self):
