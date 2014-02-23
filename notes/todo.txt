@@ -1,43 +1,8 @@
-- Define the differences between the sync and async API.
 
-    @queue.task
-    def my_task(a, b):
-        return a, b
+- Broker.set_status so that RedisBroker can publish status changes
 
-    my_task(*args, **kwargs) -> my_task.run(args, kwargs, local=False, broker=None, dependencies=[])
+- document relationships of queues, brokers, task prototypes, and futures.
 
-    future = my_task.run(args, kwargs, local=local)
-    if local:
-        future.results()
-
-- Define the difference bettween prototypes, and tasks:
-
-    - dependencies of prototypes must be other prototypes OR futures
-    - dependencies of tasks must be other task IDs
-
-    - Should there be more of a distinction bettween them than the types of
-      values in those iterators?
-
-        task prototypes have: dependencies, children
-        task instances have: dependency_ids, child_ids
-
-    - Contents of "dependencies" or "children" are:
-        - task prototype if isinstance(..., dict)
-        - task instance ID if isinstance(..., (basestring, int)) (hashable?)
-        - task future if isinstance(..., Future)
-        - unknown if otherwise
-
-
-- Determine if we should have a simple Task class (for prototypes) or just use dicts.
-    + a simple class would allow for future expansion by freezing specifications into production data (e.g. more dependencies)
-    x I can't concieve of a reason to do that expansion.
-
-
-- relationships of queues, brokers, tasks, and futures.
-
-- sync tasks could spawn threads, so Task.run() should have a timeout?
-    - start all of the dependencies and children, and then wait for them all to be non-pending
-    - will need to move the linearize logic into the run method
 - only retry tasks that errored; re-use successful results
 - error handling for sync tasks
 - resuming sync tasks

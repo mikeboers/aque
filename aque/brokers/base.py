@@ -43,20 +43,25 @@ class Broker(object):
 
     ## High-level API
 
+    def set_status(self, tid, status):
+        self.set(tid, 'status', status)
+
     def mark_as_pending(self, tid):
         """Schedule a task to run."""
-        self.set(tid, 'status', 'pending')
+        self.set_status(tid, 'pending')
 
     def mark_as_complete(self, tid, result):
         """Store a result and set the status to "complete"."""
-        self.setmany(tid, {'status': 'complete', 'result': result})
+        self.set(tid, 'result', result)
+        self.set_status(tid, 'complete')
         future = self.futures.get(tid)
         if future:
             future.set_result(result)
 
     def mark_as_error(self, tid, exc):
         """Store an error and set the status to "error"."""
-        self.setmany(tid, {'status': 'error', 'exception': exc})
+        self.set(tid, 'exception', exc)
+        self.set_status(tid, 'pending')
         future = self.futures.get(tid)
         if future:
             future.set_exception(exc)

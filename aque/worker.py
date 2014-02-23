@@ -49,6 +49,8 @@ class Worker(object):
         while tasks:
 
             tid, task = tasks.pop(0)
+            if tid in considered:
+                continue
             considered.add(tid)
 
             # TODO: make sure someone isn't working on it already.

@@ -45,6 +45,10 @@ class RedisBroker(Broker):
 
     ## High-level API
 
+    def set_status(self, tid, status):
+        super(RedisBroker, self).set_status(tid, status)
+        self._redis.publish(self._format_key('status_changes'), '%s %s' % (tid, status))
+
     def mark_as_pending(self, tid):
         """Setup the task to run when able."""
         super(RedisBroker, self).mark_as_pending(self)

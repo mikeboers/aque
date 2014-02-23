@@ -1,11 +1,13 @@
+import functools
 import grp
 import itertools
 import os
 import pwd
 
 from aque.brokers.redis import RedisBroker
-from aque.futures import Future
 from aque.exceptions import DependencyError
+from aque.futures import Future
+from aque.task import Task
 
 from redis import Redis
 
@@ -23,6 +25,11 @@ class Queue(object):
             broker = RedisBroker(name=name, redis=redis)
         self.broker = broker
 
+    def task(func=None, **options):
+        if func is None:
+            return funtools.partial(self.task, **options)
+        return Task(func, self, options)
+
     def submit(self, func, *args, **kwargs):
         return self.submit_ex(func, args, kwargs)
 
@@ -30,9 +37,6 @@ class Queue(object):
         prototype.setdefault('func', func)
         prototype.setdefault('args', args or ())
         prototype.setdefault('kwargs', kwargs or {})
-        return self.submit_prototype(prototype)
-
-    def submit_prototype(self, prototype):
         future = self._submit(prototype, {}, {})
         self.broker.mark_as_pending(future.id)
         return future
@@ -53,10 +57,10 @@ class Queue(object):
                 return future
             else:
                 raise DependencyError('dependency cycle')
-
         futures[id_] = None
 
         task = dict(task)
+        task['status'] = 'pending'
         task.setdefault('pattern', 'generic')
         task.setdefault('user', parent.get('user', _default_user.pw_name))
         task.setdefault('group', parent.get('group', _default_group.gr_name))
@@ -70,7 +74,7 @@ class Queue(object):
         task['children'] = [f.id for f in future.children]
 
         self.broker.setmany(future.id, task)
-        
+
         futures[id_] = future
 
         return future
@@ -83,4 +87,6 @@ class Queue(object):
                 yield self._submit(subtask, task, futures)
             else:
                 yield self.broker.get_future(subtask)
+
+
 

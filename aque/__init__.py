@@ -11,7 +11,7 @@ def execute(task):
     broker = LocalBroker()
 
     queue = Queue(broker=broker)
-    future = queue.submit_prototype(task)
+    future = queue.submit_ex(**task)
 
     worker = Worker(broker)
     worker.run_to_end()
