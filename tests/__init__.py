@@ -21,15 +21,15 @@ class LocalTestCase(TestCase):
         return LocalBroker()
 
 
-class RedisTestCase(TestCase):
+class RedisTestCase(LocalTestCase):
 
     def setUp(self):
+        self.redis = Redis()
         super(RedisTestCase, self).setUp()
-        self.redis = self.broker._redis
         existing = self.redis.keys(self.name + ':*')
         if existing:
             self.redis.delete(*existing)
 
     def get_broker(self):
-        return RedisBroker()
+        return RedisBroker(self.name, self.redis)
 

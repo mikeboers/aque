@@ -2,6 +2,7 @@ import itertools
 import pprint
 import time
 import traceback
+import threading
 
 from aque.utils import decode_callable, encode_if_required, decode_if_possible
 import aque.patterns
@@ -13,6 +14,10 @@ class Worker(object):
 
     def __init__(self, broker):
         self.broker = broker
+        self._stopper = threading.Event()
+
+    def stop(self):
+        self._stopper.set()
 
     def run_one(self):
         tid, task = self.capture_task()
@@ -22,15 +27,19 @@ class Worker(object):
         return True
 
     def run_to_end(self):
-        while self.run_one():
+        self._stopper.clear()
+        while not self._stopper.is_set() and self.run_one():
             pass
 
     def run_forever(self):
+        self._stopper.clear()
         while True:
             try:
                 self.run_to_end()
-                print 'end of queue; sleeping...'
-                time.sleep(1)
+                print 'end of queue (or stopped); sleeping...'
+                if self._stopper.wait(1):
+                    print 'stop requested'
+                    return
             except KeyboardInterrupt:
                 return
             except Exception:

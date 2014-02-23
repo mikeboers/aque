@@ -1,5 +1,5 @@
 
-- Broker.set_status so that RedisBroker can publish status changes
+- run a worker in a thread for testing
 
 - document relationships of queues, brokers, task prototypes, and futures.
 
