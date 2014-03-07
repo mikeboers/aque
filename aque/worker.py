@@ -46,7 +46,12 @@ class Worker(object):
                 traceback.print_exc()
 
     def capture_task(self):
-        return next(self.iter_open_tasks(), (None, None))
+        for tid, task in self.iter_open_tasks():
+
+            # TODO: actually capture it
+            return tid, task
+
+        return None, None
 
     def iter_open_tasks(self):
 

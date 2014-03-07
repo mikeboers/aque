@@ -1,10 +1,24 @@
 
-- run a worker in a thread for testing
+- worker should be able to schedule a listener on the broker for when there
+  are new tasks so that it can immediately wake up
+
+- fork before running tasks
+- do we need a Broker.post_fork() to make sure redis is okay?
+
+- If we started using postgresql, what would we store there?
+    - most of the task data as it is in a "task" table
+    - "func", "args", "kwargs", etc. would be serialized into a "package" field
+    - dependencies and children can be expressed via association table
+        task_associations -> id, parent_id, child_id, is_child, etc..
+    - logs would go into a logs table
+    - status changes, results, exceptions would still get published
+    - broker would need to abstract more of the API, and try to not expose
+      get/getall/set/setmany fields (although it could)
+    - would we want to use postgres directly, or via sqlalchemy?
 
 - document relationships of queues, brokers, task prototypes, and futures.
 
-- only retry tasks that errored; re-use successful results
-- error handling for sync tasks
-- resuming sync tasks
-- async running
-    - submit all of the dependencies and children to the queue first
+
+Distant Future
+--------------
+- consider migrating to RabbitMQ
