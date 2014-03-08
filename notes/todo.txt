@@ -1,8 +1,3 @@
-
-- all tasks must have a status; None is no longer acceptable
-  - allow: creating, pending, paused, complete, error
-- dependencies are considered top-level tasks, while children are not
-
 - worker should be able to schedule a listener on the broker for when there
   are new tasks so that it can immediately wake up
 
@@ -12,8 +7,8 @@
 - If we started using postgresql, what would we store there?
     - most of the task data as it is in a "task" table
     - "func", "args", "kwargs", etc. would be serialized into a "package" field
-    - dependencies and children can be expressed via association table
-        task_associations -> id, parent_id, child_id, is_child, etc..
+    - dependencies can be expressed via association table
+        task_associations -> id, parent_id, child_id, etc..
     - logs would go into a logs table
     - status changes, results, exceptions would still get published
     - broker would need to abstract more of the API, and try to not expose

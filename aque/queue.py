@@ -34,11 +34,10 @@ class Queue(object):
         return self.submit_ex(func, args, kwargs)
 
     def submit_ex(self, func=None, args=None, kwargs=None, **prototype):
-        prototype.setdefault('func', func)
-        prototype.setdefault('args', args or ())
-        prototype.setdefault('kwargs', kwargs or {})
-        future = self._submit(prototype, {}, {})
-        return future
+        prototype['func'] = func
+        prototype['args'] = args or ()
+        prototype['kwargs'] = kwargs or {}
+        return self._submit(prototype, {}, {})
 
     def _submit(self, task, parent, futures):
 
@@ -65,22 +64,17 @@ class Queue(object):
         task.setdefault('group'   , parent.get('group', _default_group.gr_name))
         task.setdefault('priority', parent.get('priority', 1000))
 
-        deps = task.pop('dependencies', ())
-        future = self.broker.create(task)
-        task['id'] = future.id
-
-        future.dependencies = list(self._submit_dependencies(task, deps, futures))
-        self.broker.update(future.id, {
-            'dependencies': [f.id for f in future.dependencies],
-        })
+        dep_futures = list(self._submit_dependencies(task, futures))
+        task['dependencies'] = [f.id for f in dep_futures]
         
+        future = self.broker.create(task)
         self.broker.mark_as_pending(future.id)
 
         futures[id_] = future
         return future
 
-    def _submit_dependencies(self, parent, tasks, futures):
-        for task in tasks:
+    def _submit_dependencies(self, parent, futures):
+        for task in parent.get('dependencies', ()):
             if isinstance(task, Future):
                 yield task
             elif isinstance(task, dict):

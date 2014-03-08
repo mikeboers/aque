@@ -8,4 +8,18 @@ class Future(_base.Future):
         super(Future, self).__init__()
         self.id = id
         self.broker = broker
-        self.dependencies = []
+
+    def iter(self):
+        return self._iter(set())
+
+    def _iter(self, visited):
+
+        if self.id in visited:
+            return
+        visited.add(self.id)
+        yield self
+
+        for dep_id in self.broker.fetch(self.id).get('dependencies', ()):
+            dep = self.broker.get_future(dep_id)
+            for x in dep._iter(visited):
+                yield x

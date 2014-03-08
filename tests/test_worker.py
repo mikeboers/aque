@@ -24,9 +24,9 @@ class TestWorkerBasics(TestCase):
         worker = Worker(self.broker)
         self.assertEqual(open_names(), set(['b', 'c']))
 
-        self.broker.mark_as_complete(f.dependencies[0].id, 'result')
+        self.broker.mark_as_complete(list(f.iter())[1].id, 'result')
         self.assertEqual(open_names(), set(['c']))
 
-        self.broker.mark_as_complete(f.dependencies[1].id, 'result')
+        self.broker.mark_as_complete(list(f.iter())[2].id, 'result')
         self.assertEqual(open_names(), set(['a']))
 

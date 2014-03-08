@@ -24,7 +24,7 @@ class TestQueueBasics(RedisTestCase):
         cf = self.queue.submit_ex()
         pf = self.queue.submit_ex(dependencies=[cf])
 
-        self.assertIs(cf, pf.dependencies[0])
+        self.assertIs(cf, list(pf.iter())[1])
         self.assertEqual(cf.id, 'TestQueueBasics:task:1')
         self.assertEqual(pf.id, 'TestQueueBasics:task:2')
 
@@ -33,8 +33,8 @@ class TestQueueBasics(RedisTestCase):
 
         f = self.queue.submit_ex(dependencies=[{}])
 
-        self.assertEqual(f.id, 'TestQueueBasics:task:1')
-        self.assertEqual(f.dependencies[0].id, 'TestQueueBasics:task:2')
+        self.assertEqual(list(f.iter())[1].id, 'TestQueueBasics:task:1')
+        self.assertEqual(f.id, 'TestQueueBasics:task:2')
 
 
 
