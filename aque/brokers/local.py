@@ -12,7 +12,6 @@ class LocalBroker(Broker):
         self._id_lock = threading.Lock()
         self._id_counter = 0
         self._tasks = {}
-        self._top_level_pending_tasks = []
 
     def create(self, prototype=None):
         with self._id_lock:
@@ -31,27 +30,8 @@ class LocalBroker(Broker):
     def set_status_and_notify(self, tid, status):
         self.update(tid, {'status': status})
 
-    def mark_as_pending(self, tid, top_level=True):
-        super(LocalBroker, self).mark_as_pending(tid)
-        if top_level:
-            self._top_level_pending_tasks.append(tid)
-
-    def mark_as_complete(self, tid, result):
-        super(LocalBroker, self).mark_as_complete(tid, result)
-        try:
-            self._top_level_pending_tasks.remove(tid)
-        except ValueError:
-            pass
-
-    def mark_as_error(self, tid, exc):
-        """Store an error and set the status to "error"."""
-        super(LocalBroker, self).mark_as_error(tid, exc)
-        try:
-            self._top_level_pending_tasks.remove(tid)
-        except ValueError:
-            pass
-
     def iter_pending_tasks(self):
-        for tid in self._top_level_pending_tasks:
-            yield self._tasks[tid].copy()
+        for task in self._tasks.itervalues():
+            if task['status'] == 'pending':
+                yield task.copy()
 

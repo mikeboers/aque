@@ -43,11 +43,10 @@ class RedisBroker(Broker):
         self.update(tid, {'status': status})
         self._redis.publish(self._format_key('status_changes'), '%s %s' % (tid, status))
 
-    def mark_as_pending(self, tid, top_level=True):
+    def mark_as_pending(self, tid):
         """Setup the task to run when able."""
-        super(RedisBroker, self).mark_as_pending(self)
-        if top_level:
-            self._redis.rpush(self._format_key('pending_tasks'), tid)
+        super(RedisBroker, self).mark_as_pending(tid)
+        self._redis.rpush(self._format_key('pending_tasks'), tid)
 
     def iter_pending_tasks(self):
         for tid in set(self._redis.lrange(self._format_key('pending_tasks'), 0, -1)):

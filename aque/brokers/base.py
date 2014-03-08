@@ -48,7 +48,7 @@ class Broker(object):
     def set_status_and_notify(self, tid, status):
         self.update(tid, {'status': status})
 
-    def mark_as_pending(self, tid, top_level=True):
+    def mark_as_pending(self, tid):
         """Schedule a task to run."""
         self.set_status_and_notify(tid, 'pending')
 

@@ -57,15 +57,13 @@ class Queue(object):
                 raise DependencyError('dependency cycle')
         futures[id_] = None
 
-        task = dict(task)
-        task['status'] = 'pending'
+        task['status'] = 'creating'
         task.setdefault('pattern', 'generic')
         task.setdefault('user'    , parent.get('user', _default_user.pw_name))
         task.setdefault('group'   , parent.get('group', _default_group.gr_name))
         task.setdefault('priority', parent.get('priority', 1000))
 
-        dep_futures = list(self._submit_dependencies(task, futures))
-        task['dependencies'] = [f.id for f in dep_futures]
+        task['dependencies'] = [f.id for f in self._submit_dependencies(task, futures)]
         
         future = self.broker.create(task)
         self.broker.mark_as_pending(future.id)
