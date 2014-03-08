@@ -95,17 +95,17 @@ class Worker(object):
         try:
             pattern_func(self.broker, task['id'], task)
         except Exception as e:
-            broker.mark_as_error(tid, e)
+            self.broker.mark_as_error(task['id'], e)
             raise
         
 
-        status = self.broker.get_data(task['id'])['status']
-        if status == 'complete':
-            return self.broker.get(tid, 'result')
-        elif status == 'error':
-            raise self.broker.get(tid, 'exception')
+        task = self.broker.get_data(task['id'])
+        if task['status'] == 'complete':
+            return task['result']
+        elif task['status'] == 'error':
+            raise task['exception']
         else:
-            raise TaskIncomplete('task %r has incomplete status %r' % (task['id'], status))
+            raise TaskIncomplete('task %r has incomplete status %r' % (task['id'], task['status']))
 
 
 

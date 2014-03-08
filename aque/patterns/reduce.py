@@ -15,7 +15,7 @@ def do_reduce_task(broker, tid, task):
         task.error('too many args; reduce expects 1, got %d' % len(args))
         return
 
-    sequence = [broker.get(cid, 'result') for cid in task.get('children', ())]
+    sequence = [broker.get_data(cid).get('result') for cid in task.get('children', ())]
 
     # log.debug('reducing %r with %r and %r' % (sequence, func, args))
     
