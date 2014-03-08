@@ -14,22 +14,22 @@ class LocalBroker(Broker):
         self._tasks = {}
         self._top_level_pending_tasks = []
 
-    def create_task(self, prototype):
+    def create(self, prototype=None):
         with self._id_lock:
             self._id_counter += 1
             tid = self._id_counter
-        self._tasks[tid] = dict(prototype)
+        self._tasks[tid] = dict(prototype or {})
         self._tasks[tid]['id'] = tid
         return self.get_future(tid)
 
-    def get_data(self, tid):
+    def fetch(self, tid):
         return self._tasks[tid]
 
-    def _update(self, tid, data):
+    def update(self, tid, data):
         self._tasks.setdefault(tid, {}).update(data)
 
-    def _set_status_and_notify(self, tid, status):
-        self._tasks.setdefault(tid, {})['status'] = status
+    def set_status_and_notify(self, tid, status):
+        self.update(tid, {'status': status})
 
     def mark_as_pending(self, tid, top_level=True):
         super(LocalBroker, self).mark_as_pending(tid)

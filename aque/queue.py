@@ -65,27 +65,32 @@ class Queue(object):
         task.setdefault('user', parent.get('user', _default_user.pw_name))
         task.setdefault('group', parent.get('group', _default_group.gr_name))
         task.setdefault('priority', 1000)
+        if parent:
+            task['parent'] = parent.get('id', 'unknown')
 
-        dependencies = list(self._submit_dependencies(task, 'dependencies', futures))
-        task['dependencies'] = [f.id for f in dependencies]
-        children = list(self._submit_dependencies(task, 'children', futures))
-        task['children'] = [f.id for f in children]
+        deps = task.pop('dependencies', ())
+        kids = task.pop('children', ())
+        future = self.broker.create(task)
 
-        future = self.broker.create_task(task)
-        future.dependencies = dependencies
-        future.children = children
+        future.dependencies = list(self._submit_dependencies(deps, futures))
+        future.children     = list(self._submit_dependencies(kids, futures, parent=task))
+
+        self.broker.update(future.id, {
+            'dependencies': [f.id for f in future.dependencies],
+            'children': [f.id for f in future.children],
+        })
         
         futures[id_] = future
         return future
 
-    def _submit_dependencies(self, task, key, futures):
-        for subtask in task.get(key, ()):
-            if isinstance(subtask, Future):
-                yield subtask
-            elif isinstance(subtask, dict):
-                yield self._submit(subtask, task, futures)
+    def _submit_dependencies(self, tasks, futures, parent=None):
+        for task in tasks:
+            if isinstance(task, Future):
+                yield task
+            elif isinstance(task, dict):
+                yield self._submit(task, parent, futures)
             else:
-                yield self.broker.get_future(subtask)
+                yield self.broker.get_future(task)
 
 
 

@@ -69,7 +69,7 @@ class Worker(object):
             # TODO: make sure someone isn't working on it already.
 
             dep_tids = list(task.get('dependencies', ())) + list(task.get('children', ()))
-            deps = [self.broker.get_data(dep_tid) for dep_tid in dep_tids]
+            deps = [self.broker.fetch(dep_tid) for dep_tid in dep_tids]
 
             if any(dep['status'] != 'complete' for dep in deps):
                 tasks.extend(deps)
@@ -99,7 +99,7 @@ class Worker(object):
             raise
         
 
-        task = self.broker.get_data(task['id'])
+        task = self.broker.fetch(task['id'])
         if task['status'] == 'complete':
             return task['result']
         elif task['status'] == 'error':

@@ -17,12 +17,18 @@ class RedisBroker(Broker):
         self._redis = redis
         self._db = self._redis.connection_pool.connection_kwargs['db']
 
-    def get_data(self, tid):
+    def create(self, prototype=None):
+        tid = self._format_key('task:{}', self._redis.incr(self._format_key('task_counter')))
+        if prototype:
+            self.update(tid, prototype)
+        return self.get_future(tid)
+
+    def fetch(self, tid):
         task = utils.decode_values_when_possible(self._redis.hgetall(tid))
         task['id'] = tid
         return task
 
-    def _update(self, tid, data):
+    def update(self, tid, data):
         self._redis.hmset(tid, utils.encode_values_when_required(data))
 
     ## Medium-level API
@@ -33,13 +39,8 @@ class RedisBroker(Broker):
         else:
             return ('{}:' + format).format(self._name, *args)
 
-    def create_task(self, prototype):
-        tid = self._format_key('task:{}', self._redis.incr(self._format_key('task_counter')))
-        self._update(tid, prototype)
-        return self.get_future(tid)
-
-    def _set_status_and_notify(self, tid, status):
-        self._update(tid, {'status': status})
+    def set_status_and_notify(self, tid, status):
+        self.update(tid, {'status': status})
         self._redis.publish(self._format_key('status_changes'), '%s %s' % (tid, status))
 
     def mark_as_pending(self, tid, top_level=True):
@@ -50,7 +51,7 @@ class RedisBroker(Broker):
 
     def iter_pending_tasks(self):
         for tid in set(self._redis.lrange(self._format_key('pending_tasks'), 0, -1)):
-            yield self.get_data(tid)
+            yield self.fetch(tid)
 
 
 

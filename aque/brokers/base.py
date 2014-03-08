@@ -17,16 +17,26 @@ class Broker(object):
     def __init__(self):
         self.futures = {}
 
+    # Low-level API
+
     @abstractmethod
-    def create_task(self, prototype):
+    def create(self, prototype=None):
         """Create a task, and return a Future."""
 
     @abstractmethod
-    def get_data(self, tid):
+    def fetch(self, tid):
         """Get the data for a given task ID.
 
         ``retval['id']`` MUST be ``tid``.
         """
+
+    @abstractmethod
+    def update(self, tid, data):
+        """Update the given task with the given data, but do NOT notify anyone.
+
+        Generally used for finalizing the construction of tasks."""
+
+    # High-level API
 
     def get_future(self, tid):
         """Get a Future for a given task ID.
@@ -35,30 +45,25 @@ class Broker(object):
         """
         return self.futures.setdefault(tid, Future(self, tid))
 
-    ## High-level API
-
-    def _update(self, tid, data):
-        raise NotImplementedError()
-
-    def _set_status_and_notify(self, tid, status):
-        raise NotImplementedError()
+    def set_status_and_notify(self, tid, status):
+        self.update(tid, {'status': status})
 
     def mark_as_pending(self, tid, top_level=True):
         """Schedule a task to run."""
-        self._set_status_and_notify(tid, 'pending')
+        self.set_status_and_notify(tid, 'pending')
 
     def mark_as_complete(self, tid, result):
         """Store a result and set the status to "complete"."""
-        self._update(tid, {'result': result})
-        self._set_status_and_notify(tid, 'complete')
+        self.update(tid, {'result': result})
+        self.set_status_and_notify(tid, 'complete')
         future = self.futures.get(tid)
         if future:
             future.set_result(result)
 
     def mark_as_error(self, tid, exc):
         """Store an error and set the status to "error"."""
-        self._update(tid, {'exception': exc})
-        self._set_status_and_notify(tid, 'pending')
+        self.update(tid, {'exception': exc})
+        self.set_status_and_notify(tid, 'pending')
         future = self.futures.get(tid)
         if future:
             future.set_exception(exc)
