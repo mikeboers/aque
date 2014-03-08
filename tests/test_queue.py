@@ -1,17 +1,7 @@
 from . import *
 
 
-class TestQueueBasics(TestCase):
-
-    def setUp(self):
-        self.name = self.__class__.__name__
-        self.queue = Queue(name=self.name)
-        self.broker = self.queue.broker
-        self.redis = self.broker._redis
-        
-        existing = self.redis.keys(self.name + ':*')
-        if existing:
-            self.redis.delete(*existing)
+class TestQueueBasics(RedisTestCase):
 
     def test_basic_submit(self):
 

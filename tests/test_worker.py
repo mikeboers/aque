@@ -18,7 +18,7 @@ class TestWorkerBasics(TestCase):
 
         def open_names():
             open_tasks = list(worker.iter_open_tasks())
-            open_names = [t['name'] for tid, t in open_tasks]
+            open_names = [t['name'] for t in open_tasks]
             return open_names
 
         worker = Worker(self.broker)

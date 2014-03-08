@@ -66,17 +66,16 @@ class Queue(object):
         task.setdefault('group', parent.get('group', _default_group.gr_name))
         task.setdefault('priority', 1000)
 
-        future = self.broker.get_future(self.broker.new_task_id())
+        dependencies = list(self._submit_dependencies(task, 'dependencies', futures))
+        task['dependencies'] = [f.id for f in dependencies]
+        children = list(self._submit_dependencies(task, 'children', futures))
+        task['children'] = [f.id for f in children]
 
-        future.dependencies.extend(self._submit_dependencies(task, 'dependencies', futures))
-        task['dependencies'] = [f.id for f in future.dependencies]
-        future.children.extend(self._submit_dependencies(task, 'children', futures))
-        task['children'] = [f.id for f in future.children]
-
-        self.broker.setmany(future.id, task)
-
+        future = self.broker.create_task(task)
+        future.dependencies = dependencies
+        future.children = children
+        
         futures[id_] = future
-
         return future
 
     def _submit_dependencies(self, task, key, futures):

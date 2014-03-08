@@ -1,4 +1,11 @@
 
+- all tasks must have a status; None is no longer acceptable
+  - allow: creating, pending, paused, complete, error
+- the broker must be able to return:
+  - a list of all tasks
+  - a list of pending, top-level tasks
+- dependencies are considered top-level tasks, while children are not
+
 - worker should be able to schedule a listener on the broker for when there
   are new tasks so that it can immediately wake up
 

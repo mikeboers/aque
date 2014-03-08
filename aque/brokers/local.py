@@ -1,3 +1,4 @@
+import threading
 
 import aque.utils as utils
 from .base import Broker
@@ -8,40 +9,37 @@ class LocalBroker(Broker):
 
     def __init__(self):
         super(LocalBroker, self).__init__()
+        self._id_lock = threading.Lock()
         self._id_counter = 0
         self._tasks = {}
-        self._pending_tasks = []
+        self._top_level_pending_tasks = []
 
-    ## Low-level API
+    def create_task(self, prototype):
+        with self._id_lock:
+            self._id_counter += 1
+            tid = self._id_counter
+        self._tasks[tid] = dict(prototype)
+        self._tasks[tid]['id'] = tid
+        return self.get_future(tid)
 
-    def get(self, tid, key):
-        return self._tasks.setdefault(tid, {}).get(key)
+    def get_data(self, tid):
+        return self._tasks[tid]
 
-    def getall(self, tid):
-        return dict(self._tasks.setdefault(tid, {}))
-
-    def set(self, tid, key, value):
-        self._tasks.setdefault(tid, {})[key] = value
-
-    def setmany(self, tid, data):
+    def _update(self, tid, data):
         self._tasks.setdefault(tid, {}).update(data)
 
-    ## Medium-level API
+    def _set_status_and_notify(self, tid, status):
+        self._tasks.setdefault(tid, {})['status'] = status
 
-    def new_task_id(self):
-        self._id_counter += 1
-        return self._id_counter
-
-    ## High-level API
-
-    def mark_as_pending(self, tid):
+    def mark_as_pending(self, tid, top_level=True):
         super(LocalBroker, self).mark_as_pending(tid)
-        self._pending_tasks.append(tid)
+        if top_level:
+            self._top_level_pending_tasks.append(tid)
 
     def mark_as_complete(self, tid, result):
         super(LocalBroker, self).mark_as_complete(tid, result)
         try:
-            self._pending_tasks.remove(tid)
+            self._top_level_pending_tasks.remove(tid)
         except ValueError:
             pass
 
@@ -49,10 +47,11 @@ class LocalBroker(Broker):
         """Store an error and set the status to "error"."""
         super(LocalBroker, self).mark_as_error(tid, exc)
         try:
-            self._pending_tasks.remove(tid)
+            self._top_level_pending_tasks.remove(tid)
         except ValueError:
             pass
 
-    def get_pending_task_ids(self):
-        return list(self._pending_tasks)
+    def iter_pending_tasks(self):
+        for tid in self._top_level_pending_tasks:
+            yield self._tasks[tid].copy()
 

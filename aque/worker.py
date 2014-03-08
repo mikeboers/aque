@@ -20,10 +20,10 @@ class Worker(object):
         self._stopper.set()
 
     def run_one(self):
-        tid, task = self.capture_task()
-        if not tid:
+        task = self.capture_task()
+        if not task:
             return False
-        self._execute(tid, task)
+        self._execute(task)
         return True
 
     def run_to_end(self):
@@ -46,41 +46,39 @@ class Worker(object):
                 traceback.print_exc()
 
     def capture_task(self):
-        for tid, task in self.iter_open_tasks():
+        for task in self.iter_open_tasks():
 
             # TODO: actually capture it
-            return tid, task
+            return task
 
-        return None, None
+        return None
 
     def iter_open_tasks(self):
 
-        task_ids = self.broker.get_pending_task_ids()
-        tasks = [(tid, self.broker.getall(tid)) for tid in task_ids]
-        tasks.sort(key=lambda (tid, task): (task.get('priority', 1000), tid), reverse=True)
+        tasks = list(self.broker.iter_pending_tasks())
+        tasks.sort(key=lambda task: (task.get('priority', 1000), task['id']), reverse=True)
 
         considered = set()
         while tasks:
 
-            tid, task = tasks.pop(0)
-            if tid in considered:
+            task = tasks.pop(0)
+            if task['id'] in considered:
                 continue
-            considered.add(tid)
+            considered.add(task['id'])
 
             # TODO: make sure someone isn't working on it already.
 
-            dep_ids = list(task.get('dependencies', ())) + list(task.get('children', ()))
-            deps = []
+            dep_tids = list(task.get('dependencies', ())) + list(task.get('children', ()))
+            deps = [self.broker.get_data(dep_tid) for dep_tid in dep_tids]
 
-            if any(self.broker.get(xid, 'status') != 'complete' for xid in dep_ids):
-                tasks.extend((xid, self.broker.getall(xid)) for xid in dep_ids)
+            if any(dep['status'] != 'complete' for dep in deps):
+                tasks.extend(deps)
                 continue
 
-            status = self.broker.get(tid, 'status')
-            if status in ('pending', None):
-                yield tid, task
+            if task['status'] == 'pending':
+                yield task
 
-    def _execute(self, tid, task):
+    def _execute(self, task):
         """Find the pattern handler, call it, and catch errors.
 
         "dependencies" and "children" of the task MUST be a sequence of IDs.
@@ -95,18 +93,19 @@ class Worker(object):
             raise TaskError('unknown pattern %r' % pattern_name)
         
         try:
-            pattern_func(self.broker, tid, task)
+            pattern_func(self.broker, task['id'], task)
         except Exception as e:
             broker.mark_as_error(tid, e)
             raise
         
-        status = self.broker.get(tid, 'status')
+
+        status = self.broker.get_data(task['id'])['status']
         if status == 'complete':
             return self.broker.get(tid, 'result')
         elif status == 'error':
             raise self.broker.get(tid, 'exception')
         else:
-            raise TaskIncomplete('incomplete status %r' % status)
+            raise TaskIncomplete('task %r has incomplete status %r' % (task['id'], status))
 
 
 
