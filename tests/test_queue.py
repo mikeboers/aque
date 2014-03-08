@@ -14,7 +14,7 @@ class TestQueueBasics(RedisTestCase):
     def test_manual_child_submit_by_id(self):
 
         cf = self.queue.submit_ex()
-        pf = self.queue.submit_ex(children=[cf.id])
+        pf = self.queue.submit_ex(dependencies=[cf.id])
 
         self.assertEqual(cf.id, 'TestQueueBasics:task:1')
         self.assertEqual(pf.id, 'TestQueueBasics:task:2')
@@ -22,19 +22,19 @@ class TestQueueBasics(RedisTestCase):
     def test_manual_child_submit_by_future(self):
 
         cf = self.queue.submit_ex()
-        pf = self.queue.submit_ex(children=[cf])
+        pf = self.queue.submit_ex(dependencies=[cf])
 
-        self.assertIs(cf, pf.children[0])
+        self.assertIs(cf, pf.dependencies[0])
         self.assertEqual(cf.id, 'TestQueueBasics:task:1')
         self.assertEqual(pf.id, 'TestQueueBasics:task:2')
 
 
     def test_auto_child_submit(self):
 
-        f = self.queue.submit_ex(children=[{}])
+        f = self.queue.submit_ex(dependencies=[{}])
 
         self.assertEqual(f.id, 'TestQueueBasics:task:1')
-        self.assertEqual(f.children[0].id, 'TestQueueBasics:task:2')
+        self.assertEqual(f.dependencies[0].id, 'TestQueueBasics:task:2')
 
 
 

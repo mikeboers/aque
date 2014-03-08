@@ -15,8 +15,8 @@ class TestSync(TestCase):
         square = lambda x: x * x
         add = lambda x, y: x + y
 
-        children = [{'func': square, 'args': (i, )} for i in xrange(1, 5)]
-        task = {'pattern': 'reduce_children', 'func': add, 'children': children}
+        dependencies = [{'func': square, 'args': (i, )} for i in xrange(1, 5)]
+        task = {'pattern': 'reduce_children', 'func': add, 'dependencies': dependencies}
         res = execute(task)
 
         self.assertEqual(res, 1 + 4 + 9 + 16)

@@ -7,6 +7,7 @@ import threading
 from aque.utils import decode_callable, encode_if_required, decode_if_possible
 import aque.patterns
 from .futures import Future
+from .exceptions import TaskIncomplete
 
 
 
@@ -68,9 +69,7 @@ class Worker(object):
 
             # TODO: make sure someone isn't working on it already.
 
-            dep_tids = list(task.get('dependencies', ())) + list(task.get('children', ()))
-            deps = [self.broker.fetch(dep_tid) for dep_tid in dep_tids]
-
+            deps = [self.broker.fetch(x) for x in task.get('dependencies', ())]
             if any(dep['status'] != 'complete' for dep in deps):
                 tasks.extend(deps)
                 continue

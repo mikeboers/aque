@@ -13,11 +13,12 @@ class TestOrder(TestCase):
         b = {'func': functools.partial(res.append, 'b')}
         c = {'func': functools.partial(res.append, 'c')}
 
-        a['children'] = [b, c]
+        a['dependencies'] = [b, c]
         
         execute(a)
 
-        self.assertEqual(res, ['b', 'c', 'a'])
+        # TODO: This seems backwards.
+        self.assertEqual(res, ['c', 'b', 'a'])
 
     def test_diamond(self):
 
@@ -28,32 +29,26 @@ class TestOrder(TestCase):
         c = {'func': functools.partial(res.append, 'c')}
         d = {'func': functools.partial(res.append, 'd')}
 
-        a['children'] = [b, c]
-        b['children'] = [d]
-        c['children'] = [d]
+        a['dependencies'] = [b, c]
+        b['dependencies'] = [d]
+        c['dependencies'] = [d]
 
         execute(a)
 
-        self.assertEqual(res, ['d', 'b', 'c', 'a'])
-
+        # TODO: This seems backwards.
+        self.assertEqual(res, ['d', 'c', 'b', 'a'])
 
     def test_loop(self):
-
         a = {}
-        b = {'children': [a]}
-        a['children'] = [b]
-
+        b = {'dependencies': [a]}
+        a['dependencies'] = [b]
         self.assertRaises(DependencyError, execute, a)
 
-
     def test_looped_branches(self):
-
         a = {}
         b = {}
         c = {}
-
-        c['children'] = [b]
-        b['children'] = [c]
-        a['children'] = [a, b]
-
+        c['dependencies'] = [b]
+        b['dependencies'] = [c]
+        a['dependencies'] = [a, b]
         self.assertRaises(DependencyError, execute, a)

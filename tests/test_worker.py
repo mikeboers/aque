@@ -12,21 +12,21 @@ class TestWorkerBasics(TestCase):
 
         b = {'name': 'b'}
         c = {'name': 'c'}
-        a = {'name': 'a', 'children': [b, c]}
+        a = {'name': 'a', 'dependencies': [b, c]}
 
         f = self.queue.submit_ex(**a)
 
         def open_names():
             open_tasks = list(worker.iter_open_tasks())
-            open_names = [t['name'] for t in open_tasks]
+            open_names = set(t['name'] for t in open_tasks)
             return open_names
 
         worker = Worker(self.broker)
-        self.assertEqual(open_names(), ['b', 'c'])
+        self.assertEqual(open_names(), set(['b', 'c']))
 
-        self.broker.mark_as_complete(f.children[0].id, 'result')
-        self.assertEqual(open_names(), ['c'])
+        self.broker.mark_as_complete(f.dependencies[0].id, 'result')
+        self.assertEqual(open_names(), set(['c']))
 
-        self.broker.mark_as_complete(f.children[1].id, 'result')
-        self.assertEqual(open_names(), ['a'])
+        self.broker.mark_as_complete(f.dependencies[1].id, 'result')
+        self.assertEqual(open_names(), set(['a']))
 

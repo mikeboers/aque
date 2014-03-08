@@ -38,7 +38,6 @@ class Queue(object):
         prototype.setdefault('args', args or ())
         prototype.setdefault('kwargs', kwargs or {})
         future = self._submit(prototype, {}, {})
-        self.broker.mark_as_pending(future.id)
         return future
 
     def _submit(self, task, parent, futures):
@@ -62,28 +61,25 @@ class Queue(object):
         task = dict(task)
         task['status'] = 'pending'
         task.setdefault('pattern', 'generic')
-        task.setdefault('user', parent.get('user', _default_user.pw_name))
-        task.setdefault('group', parent.get('group', _default_group.gr_name))
-        task.setdefault('priority', 1000)
-        if parent:
-            task['parent'] = parent.get('id', 'unknown')
+        task.setdefault('user'    , parent.get('user', _default_user.pw_name))
+        task.setdefault('group'   , parent.get('group', _default_group.gr_name))
+        task.setdefault('priority', parent.get('priority', 1000))
 
         deps = task.pop('dependencies', ())
-        kids = task.pop('children', ())
         future = self.broker.create(task)
+        task['id'] = future.id
 
-        future.dependencies = list(self._submit_dependencies(deps, futures))
-        future.children     = list(self._submit_dependencies(kids, futures, parent=task))
-
+        future.dependencies = list(self._submit_dependencies(task, deps, futures))
         self.broker.update(future.id, {
             'dependencies': [f.id for f in future.dependencies],
-            'children': [f.id for f in future.children],
         })
         
+        self.broker.mark_as_pending(future.id)
+
         futures[id_] = future
         return future
 
-    def _submit_dependencies(self, tasks, futures, parent=None):
+    def _submit_dependencies(self, parent, tasks, futures):
         for task in tasks:
             if isinstance(task, Future):
                 yield task
