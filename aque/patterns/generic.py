@@ -6,7 +6,7 @@ from aque.utils import decode_callable
 log = logging.getLogger(__name__)
 
 
-def do_generic_task(broker, tid, task):
+def do_generic_task(broker, task):
 
     func = decode_callable(task.get('func'))
     args = task.get('args') or ()
@@ -17,7 +17,7 @@ def do_generic_task(broker, tid, task):
     try:
         res = func(*args, **kwargs)
     except Exception as e:
-        broker.mark_as_error(tid, e)
+        broker.mark_as_error(task['id'], e)
     else:
-        broker.mark_as_complete(tid, res)
+        broker.mark_as_complete(task['id'], res)
 

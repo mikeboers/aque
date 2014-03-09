@@ -92,7 +92,7 @@ class Worker(object):
             raise TaskError('unknown pattern %r' % pattern_name)
         
         try:
-            pattern_func(self.broker, task['id'], task)
+            pattern_func(self.broker, task)
         except Exception as e:
             self.broker.mark_as_error(task['id'], e)
             raise

@@ -7,10 +7,16 @@
 - If we started using postgresql, what would we store there?
     - most of the task data as it is in a "task" table
     - "func", "args", "kwargs", etc. would be serialized into a "package" field
-    - dependencies can be expressed via association table
-        task_associations -> id, parent_id, child_id, etc..
+      OR have actual fields knowing that any other package data could be crammed
+      into there for a custom pattern
+    - dependencies via association table:
+      CREATE TABLE dependency (
+        id INTEGER PRIMARY KEY,
+        parent_id INTEGER FOREIGN KEY (task.id),
+        child_id INTEGER FOREIGN KEY (task.id),
+      );
     - logs would go into a logs table
-    - status changes, results, exceptions would still get published
+    - status changes, results, exceptions would still get published via redis
     - broker would need to abstract more of the API, and try to not expose
       get/getall/set/setmany fields (although it could)
     - would we want to use postgres directly, or via sqlalchemy?
