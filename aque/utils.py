@@ -3,6 +3,9 @@ from cPickle import PickleError
 import cPickle as pickle
 import json
 import pkg_resources
+import os
+import threading
+import select
 
 
 def encode_if_required(value):
@@ -88,4 +91,32 @@ def decode_callable(input_, entry_point_group=None):
 
     # 5. Give up!.
     raise ValueError('could not decode callable from %r' % input_)
+
+
+class WaitableEvent(object):
+
+    def __init__(self):
+        self._read_fd, self._write_fd = os.pipe()
+
+    def wait(self, timeout=None):
+        r, _, _ = select.select([self._read_fd], [], [], timeout)
+        return bool(r)
+
+    def is_set(self):
+        return self.wait(0)
+
+    def clear(self):
+        if self.is_set():
+            os.read(self._read_fd, 1)
+
+    def set(self):
+        if not self.is_set():
+            os.write(self._write_fd, '1')
+
+    def fileno(self):
+        return self._read_fd
+
+    def __del__(self):
+        os.close(self._read_fd)
+        os.close(self._write_fd)
 

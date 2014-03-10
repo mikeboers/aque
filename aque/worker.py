@@ -37,9 +37,7 @@ class Worker(object):
         while True:
             try:
                 self.run_to_end()
-                print 'end of queue (or stopped); sleeping...'
                 if self._stopper.wait(1):
-                    print 'stop requested'
                     return
             except KeyboardInterrupt:
                 return
@@ -92,6 +90,8 @@ class Worker(object):
         
         try:
             pattern_func(self.broker, task)
+        except KeyboardInterrupt:
+            raise
         except Exception as e:
             self.broker.mark_as_error(task['id'], e)
 

@@ -22,6 +22,9 @@ class BrokerTestCase(TestCase):
         self.queue = Queue(self.broker)
         self.worker = Worker(self.broker)
 
+    def tearDown(self):
+        self.broker.close()
+
 
 class WorkerTestCase(BrokerTestCase):
 
@@ -31,5 +34,6 @@ class WorkerTestCase(BrokerTestCase):
         self.worker_thread.start()
 
     def tearDown(self):
+        super(WorkerTestCase, self).tearDown()
         self.worker.stop()
         self.worker_thread.join(1.1) # Just longer than the worker sleep time.

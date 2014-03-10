@@ -1,5 +1,8 @@
 import contextlib
+import json
 import threading
+import select
+from Queue import Queue, Empty
 
 import psycopg2.pool
 import psycopg2 as pg
@@ -22,7 +25,25 @@ class PostgresBroker(Broker):
         if self._pool is None:
             self._pool = pg.pool.ThreadedConnectionPool(0, 4, **kwargs)
 
+        self._notify_stopper = utils.WaitableEvent()
+        self._notify_lock = threading.Lock()
+        self._notify_thread = None
+        self._notify_queues = {}
+
         self.init()
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        self._notify_stopper.set()
+
+    def _notify_start(self):
+        with self._notify_lock:
+            if not self._notify_thread:
+                self._notify_thread = threading.Thread(target=self._event_thread_target)
+                self._notify_thread.daemon=True
+                self._notify_thread.start()
 
     @contextlib.contextmanager
     def _connect(self):
@@ -40,6 +61,7 @@ class PostgresBroker(Broker):
                 yield cur
 
     def init(self):
+
         with self._cursor() as cur:
             cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
@@ -75,6 +97,11 @@ class PostgresBroker(Broker):
                 cur.execute('DROP DATABASE IF EXISTS %s' % dbname)
                 cur.execute('CREATE DATABASE %s' % dbname)
 
+    def get_future(self, tid):
+        future = super(PostgresBroker, self).get_future(tid)
+        self._notify_start()
+        return future
+
     def create(self, prototype=None):
         with self._cursor() as cur:
             cur.execute('''INSERT INTO tasks (status) VALUES ('creating') RETURNING id''')
@@ -88,14 +115,21 @@ class PostgresBroker(Broker):
             cur.execute('''SELECT * FROM tasks WHERE id = %s''', (tid, ))
             return self._complete_task_row(next(cur), cur)
 
+    def _encode(self, x):
+        x = utils.encode_if_required(x)
+        if isinstance(x, basestring) and not x.isalnum():
+            x = buffer(x)
+        return x
+
+    def _decode(self, x):
+        if isinstance(x, buffer):
+            x = str(x)
+        if isinstance(x, basestring) and x.startswith('\\x'):
+            x = x[2:].decode('hex')
+        return utils.decode_if_possible(x)
+
     def _complete_task_row(self, row, cur):
-        decoded = []
-        for x in row:
-            if isinstance(x, buffer):
-                x = str(x)
-            if isinstance(x, basestring) and x.startswith('\\x'):
-                x = x[2:].decode('hex')
-            decoded.append(utils.decode_if_possible(x))
+        decoded = [self._decode(x) for x in row]
         task = dict(zip(self._task_fields, decoded))
         cur.execute('SELECT dependee FROM dependencies WHERE depender = %s', (task['id'], ))
         task['dependencies'] = [row[0] for row in cur]
@@ -111,10 +145,7 @@ class PostgresBroker(Broker):
                 pass
             else:
                 fields.append(name)
-                value = utils.encode_if_required(value)
-                if isinstance(value, basestring) and not value.isalnum():
-                    value = buffer(value)
-                params.append(value)
+                params.append(self._encode(value))
 
         deps = data.pop('dependencies', None)
 
@@ -135,28 +166,32 @@ class PostgresBroker(Broker):
     def set_status_and_notify(self, tid, status):
         with self._cursor() as cur:
             cur.execute('''UPDATE tasks SET status = %s WHERE id = %s''', (status, tid))
-            cur.execute('''NOTIFY task_status, %s''', ('%d %s' % (tid, status), ))
+            cur.execute('''NOTIFY task_status, %s''', [json.dumps({
+                'id': tid,
+                'status': status,
+            })])
 
     def mark_as_success(self, tid, result):
         with self._cursor() as cur:
             cur.execute(
                 '''UPDATE tasks SET status = 'success', result = %s WHERE id = %s''',
-                (utils.encode_if_required(result), tid),
+                [self._encode(result), tid],
             )
-            cur.execute('''NOTIFY task_status, %s''', ['%d complete' % tid])
-        future = self.futures.get(tid)
-        if future:
-            future.set_result(result)
+            cur.execute('''NOTIFY task_status, %s''', [json.dumps({
+                'id': tid,
+                'status': 'success',
+            })])
 
     def mark_as_error(self, tid, exception):
         with self._cursor() as cur:
             cur.execute(
                 '''UPDATE tasks SET status = 'error', result = %s WHERE id = %s''',
-                (utils.encode_exception(exception), tid),
+                [self._encode(exception), tid],
             )
-            cur.execute('''NOTIFY task_status, %s''', ['%d error' % tid])
-        future = self.futures.get(tid)
-        future.set_exception(exception)
+            cur.execute('''NOTIFY task_status, %s''', [json.dumps({
+                'id': tid,
+                'status': 'error',
+            })])
 
     def iter_pending_tasks(self):
         with self._cursor() as cur:
@@ -165,5 +200,57 @@ class PostgresBroker(Broker):
             for row in rows:
                 yield self._complete_task_row(row, cur)
 
+    def wait_for(self, tid, timeout=None):
 
+        raise NotImplementedError()
+
+        # Schedule ourselves to receive events.
+        queue = Queue()
+        with self._notify_lock:
+            self._notify_queues.setdefault(tid, []).append(queue)
+
+        # Lets take a look at the actual status, however.
+        with self._cursor() as cur:
+            cur.execute('SELECT status FROM tasks WHERE id = %s', [tid])
+            status = next(cur)[0]
+
+        # Wait for a non-pending status.
+        while status == 'pending':
+            try:
+                status = queue.get(True, timeout)
+            except Empty:
+                break
+
+        # Unschedule ourselves.
+        self._notify_queues[tid].remove(queue)
+
+        return status
+
+    def _event_thread_target(self):
+        with self._connect() as conn:
+
+            cur = conn.cursor()
+            cur.execute('LISTEN task_status')
+            conn.commit()
+
+            while not self._notify_stopper.is_set():
+                r, _, _ = select.select([self._notify_stopper, conn], [], [], 1.0)
+                if conn in r:
+                    conn.poll()
+                    while conn.notifies:
+                        self._dispatch_notification(conn.notifies.pop())
+
+    def _dispatch_notification(self, message):
+        payload = json.loads(message.payload)
+        future = self.futures.get(payload['id'])
+        if not future:
+            return
+        if payload['status'] == 'success':
+            with self._cursor() as cur:
+                cur.execute('SELECT result FROM tasks WHERE id = %s', [payload['id']])
+                future.set_result(self._decode(next(cur)[0]))
+        elif payload['status'] == 'error':
+            with self._cursor() as cur:
+                cur.execute('SELECT result FROM tasks WHERE id = %s', [payload['id']])
+                future.set_exception(self._decode(next(cur)[0]))
 

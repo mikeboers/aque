@@ -32,6 +32,9 @@ class Broker(object):
 
         The broker is unusable unless :meth:`.init` is called."""
 
+    def close(self):
+        pass
+    
     @abstractmethod
     def create(self, prototype=None):
         """Create a task, and return a Future."""
