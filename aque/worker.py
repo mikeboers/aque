@@ -43,6 +43,7 @@ class Worker(object):
                     return
             except KeyboardInterrupt:
                 return
+                
 
     def capture_task(self):
         for task in self.iter_open_tasks():
@@ -68,7 +69,7 @@ class Worker(object):
             # TODO: make sure someone isn't working on it already.
 
             deps = [self.broker.fetch(x) for x in task.get('dependencies', ())]
-            if any(dep['status'] != 'complete' for dep in deps):
+            if any(dep['status'] != 'success' for dep in deps):
                 tasks.extend(deps)
                 continue
 

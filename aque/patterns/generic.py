@@ -19,5 +19,5 @@ def do_generic_task(broker, task):
     except Exception as e:
         broker.mark_as_error(task['id'], e)
     else:
-        broker.mark_as_complete(task['id'], res)
+        broker.mark_as_success(task['id'], res)
 

@@ -15,5 +15,5 @@ def do_shell_task(broker, task):
     if code:
         broker.mark_as_error(task['id'], subprocess.CalledProcessError(code, cmd))
     else:
-        broker.mark_as_complete(task['id'], 0)
+        broker.mark_as_success(task['id'], 0)
 

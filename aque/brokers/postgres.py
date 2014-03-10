@@ -137,10 +137,10 @@ class PostgresBroker(Broker):
             cur.execute('''UPDATE tasks SET status = %s WHERE id = %s''', (status, tid))
             cur.execute('''NOTIFY task_status, %s''', ('%d %s' % (tid, status), ))
 
-    def mark_as_complete(self, tid, result):
+    def mark_as_success(self, tid, result):
         with self._cursor() as cur:
             cur.execute(
-                '''UPDATE tasks SET status = 'complete', result = %s WHERE id = %s''',
+                '''UPDATE tasks SET status = 'success', result = %s WHERE id = %s''',
                 (utils.encode_if_required(result), tid),
             )
             cur.execute('''NOTIFY task_status, %s''', ['%d complete' % tid])

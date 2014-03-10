@@ -11,7 +11,7 @@ def graph_order(broker, task):
             if x not in res:
                 res.append(x)
     res.append(task.get('name', task['id']))
-    broker.mark_as_complete(task['id'], res)
+    broker.mark_as_success(task['id'], res)
 
 
 class TestGraphTraversal(BrokerTestCase):

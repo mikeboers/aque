@@ -20,4 +20,4 @@ def do_reduce_task(broker, task):
     # log.debug('reducing %r with %r and %r' % (sequence, func, args))
     
     res = reduce(func, sequence, *args)
-    broker.mark_as_complete(task['id'], res)
+    broker.mark_as_success(task['id'], res)

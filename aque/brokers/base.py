@@ -66,8 +66,8 @@ class Broker(object):
         self.set_status_and_notify(tid, 'pending')
 
     @abstractmethod
-    def mark_as_complete(self, tid, result):
-        """Store a result and set the status to "complete"."""
+    def mark_as_success(self, tid, result):
+        """Store a result and set the status to "success"."""
 
     @abstractmethod
     def mark_as_error(self, tid, exc):

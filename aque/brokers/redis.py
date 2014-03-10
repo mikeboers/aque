@@ -54,8 +54,8 @@ class RedisBroker(Broker):
         super(RedisBroker, self).mark_as_pending(tid)
         self._redis.sadd(self._key('pending_tasks'), tid)
 
-    def mark_as_complete(self, tid, result):
-        super(RedisBroker, self).mark_as_complete(tid, result)
+    def mark_as_success(self, tid, result):
+        super(RedisBroker, self).mark_as_success(tid, result)
         self._redis.srem(self._key('pending_tasks'), tid)
 
     def mark_as_error(self, tid, exception):
