@@ -1,4 +1,4 @@
-import aque.brokers.local
+import aque.brokers.memory
 import aque.queue
 import aque.worker
 
@@ -20,7 +20,7 @@ class Task(object):
         opts.update(kwargs)
 
         if opts.pop('local', False):
-            broker = aque.brokers.local.LocalBroker()
+            broker = aque.brokers.memory.MemoryBroker()
             queue = aque.queue.Queue(broker=broker)
             future = queue.submit_ex(self.func, *args, **opts)
             worker = aque.worker.Worker(broker)

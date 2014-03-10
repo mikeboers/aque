@@ -4,14 +4,20 @@ import aque.utils as utils
 from .base import Broker
 
 
-class LocalBroker(Broker):
+class MemoryBroker(Broker):
     """A :class:`.Broker` which holds everything in memory."""
 
     def __init__(self):
-        super(LocalBroker, self).__init__()
+        super(MemoryBroker, self).__init__()
         self._id_lock = threading.Lock()
-        self._id_counter = 0
+        self.init()
+
+    def init(self):
         self._tasks = {}
+        self._id_counter = 0
+
+    def clear(self):
+        self.init()
 
     def create(self, prototype=None):
         with self._id_lock:

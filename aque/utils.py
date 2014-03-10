@@ -58,7 +58,7 @@ def decode_values_when_possible(input_):
     return dict((k, decode_if_possible(v)) for k, v in input_.iteritems())
 
 
-def decode_callable(input_, entrypoint_group='aque_patterns'):
+def decode_callable(input_, entry_point_group=None):
 
     # 1. If it is callable, pass through.
     if isinstance(input_, Callable):
@@ -82,8 +82,9 @@ def decode_callable(input_, entrypoint_group='aque_patterns'):
         pass
 
     # 4. Try to look it up in the given entrypoint group.
-    for ep in pkg_resources.iter_entry_points(entrypoint_group, input_):
-        return ep.load()
+    if entry_point_group:
+        for ep in pkg_resources.iter_entry_points(entry_point_group, input_):
+            return ep.load()
 
     # 5. Give up!.
     raise ValueError('could not decode callable from %r' % input_)

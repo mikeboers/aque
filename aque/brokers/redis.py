@@ -17,6 +17,11 @@ class RedisBroker(Broker):
         self._redis = redis
         self._db = self._redis.connection_pool.connection_kwargs['db']
 
+    def clear(self):
+        existing = self._redis.keys(self._name + ':*')
+        if existing:
+            self._redis.delete(*existing)
+
     def create(self, prototype=None):
         tid = self._key('task:{}', self._redis.incr(self._key('task_counter')))
         if prototype:

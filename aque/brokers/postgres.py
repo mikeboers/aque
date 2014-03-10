@@ -21,20 +21,19 @@ class literal(str):
         return str(self)
 
 
-class PGBroker(Broker):
+class PostgresBroker(Broker):
+
+    @classmethod
+    def from_url(cls, parts):
+        return cls(database=parts.path.strip('/').lower())
 
     def __init__(self, **kwargs):
-        super(PGBroker, self).__init__()
+        super(PostgresBroker, self).__init__()
 
+        self._dbname = kwargs['database']
         self._pool = kwargs.pop('pool', None)
         if self._pool is None:
             self._pool = pg.pool.ThreadedConnectionPool(0, 10, **kwargs)
-
-        with self._cursor() as cur:
-            cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
-                id SERIAL PRIMARY KEY,
-                status TEXT NOT NULL
-            )''')
 
     @contextlib.contextmanager
     def _connect(self):
@@ -50,6 +49,20 @@ class PGBroker(Broker):
         with self._connect() as conn:
             with conn.cursor() as cur:
                 yield cur
+
+    def init(self):
+        with self._cursor() as cur:
+            cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
+                id SERIAL PRIMARY KEY,
+                status TEXT NOT NULL
+            )''')
+
+    def clear(self):
+        with pg2.connect(database='postgres') as conn:
+            conn.set_isolation_level(0)
+            with conn.cursor() as cur:
+                cur.execute('DROP DATABASE IF EXISTS %s' % self._dbname)
+                cur.execute('CREATE DATABASE %s' % self._dbname)
 
     def create(self, prototype=None):
         with self._cursor() as cur:

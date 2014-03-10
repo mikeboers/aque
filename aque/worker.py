@@ -86,7 +86,7 @@ class Worker(object):
 
         pattern_name = task.get('pattern', 'generic')
         pattern_func = aque.patterns.registry.get(pattern_name, pattern_name)
-        pattern_func = decode_callable(pattern_func)
+        pattern_func = decode_callable(pattern_func, 'aque_patterns')
 
         if pattern_func is None:
             raise TaskError('unknown pattern %r' % pattern_name)

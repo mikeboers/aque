@@ -25,8 +25,13 @@ setup(
     entry_points={
         'aque_patterns': [
             'generic = aque.patterns.generic:do_generic_task',
-            'reduce_children = aque.patterns.reduce:do_reduce_task',
+            'reduce = aque.patterns.reduce:do_reduce_task',
             'shell = aque.patterns.shell:do_shell_task',
+        ],
+        'aque_brokers': [
+            'memory = aque.brokers.memory:MemoryBroker',
+            'redis = aque.brokers.redis:RedisBroker',
+            'postgres = aque.brokers.postgres:PostgresBroker',
         ],
     },
 

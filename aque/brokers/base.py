@@ -14,10 +14,23 @@ class Broker(object):
 
     __metaclass__ = ABCMeta
 
+    @classmethod
+    def from_url(cls, parts):
+        """Construct a broker from the results of :func:`urlparse.urlsplit`."""
+        return cls()
+
     def __init__(self):
         self.futures = {}
 
-    # Low-level API
+    def init(self):
+        """Initialize the storage backing this broker.
+
+        Normally only called by workers."""
+
+    def clear(self):
+        """Destroy all storage backing this broker.
+
+        The broker is unusable unless :meth:`.init` is called."""
 
     @abstractmethod
     def create(self, prototype=None):

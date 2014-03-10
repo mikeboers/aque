@@ -1,3 +1,4 @@
+from aque.brokers.memory import MemoryBroker
 from . import *
 
 
@@ -5,7 +6,7 @@ class TestWorkerBasics(TestCase):
 
     def setUp(self):
         self.name = self.__class__.__name__
-        self.broker = LocalBroker()
+        self.broker = MemoryBroker()
         self.queue = Queue(broker=self.broker)
 
     def test_open_tasks(self):
