@@ -3,10 +3,10 @@ from . import *
 import threading
 
 
-class TestRedisIntegration(RedisTestCase):
+class TestPGIntegration(PGTestCase):
 
     def setUp(self):
-        super(TestRedisIntegration, self).setUp()
+        super(TestPGIntegration, self).setUp()
         self.thread = threading.Thread(target=self.worker_target)
         self.thread.start()
 

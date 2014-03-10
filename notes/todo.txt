@@ -1,28 +1,35 @@
+
 - worker should be able to schedule a listener on the broker for when there
   are new tasks so that it can immediately wake up
+
+- /etc/aque could contain settings for a default queue, OR try to import ficonfig
+  to pull the basic config
 
 - fork before running tasks
 - do we need a Broker.post_fork() to make sure redis is okay?
 
+- worker should call Broker.migrate_schema() when it starts
+
+- switching to postgres is pretty much near required, since to keep everything
+  sane we will need to dump into another database anyways, and it greatly
+  simplifies the project if we just go straight into PG
+
+  - do we want to use psycopg2 directly, or sqlalchemy?
+
 - If we started using postgresql, what would we store there?
     - most of the task data as it is in a "task" table
-    - "func", "args", "kwargs", etc. would be serialized into a "package" field
-      OR have actual fields knowing that any other package data could be crammed
-      into there for a custom pattern
+      id, pattern, user, group, priority, func, args, kwargs, ...
     - dependencies via association table:
       CREATE TABLE dependency (
         id INTEGER PRIMARY KEY,
-        parent_id INTEGER FOREIGN KEY (task.id),
-        child_id INTEGER FOREIGN KEY (task.id),
+        producer INTEGER FOREIGN KEY (task.id),
+        consumer INTEGER FOREIGN KEY (task.id),
       );
     - logs would go into a logs table
-    - status changes, results, exceptions would still get published via redis
-    - broker would need to abstract more of the API, and try to not expose
-      get/getall/set/setmany fields (although it could)
+    - status changes, results, exceptions would get published via redis or postgres' LISTEN
     - would we want to use postgres directly, or via sqlalchemy?
 
 - document relationships of queues, brokers, task prototypes, and futures.
-
 
 Distant Future
 --------------

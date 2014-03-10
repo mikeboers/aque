@@ -18,9 +18,10 @@ class RedisBroker(Broker):
         self._db = self._redis.connection_pool.connection_kwargs['db']
 
     def create(self, prototype=None):
-        tid = self._format_key('task:{}', self._redis.incr(self._format_key('task_counter')))
+        tid = self._key('task:{}', self._redis.incr(self._key('task_counter')))
         if prototype:
             self.update(tid, prototype)
+        self._redis.rpush(self._key('all_tasks'), tid)
         return self.get_future(tid)
 
     def fetch(self, tid):
@@ -33,7 +34,7 @@ class RedisBroker(Broker):
 
     ## Medium-level API
 
-    def _format_key(self, format, *args, **kwargs):
+    def _key(self, format, *args, **kwargs):
         if kwargs.pop('_db', None):
             return ('{}@{}:' + format).format(self._name, self._db, *args)
         else:
@@ -41,17 +42,24 @@ class RedisBroker(Broker):
 
     def set_status_and_notify(self, tid, status):
         self.update(tid, {'status': status})
-        self._redis.publish(self._format_key('status_changes'), '%s %s' % (tid, status))
+        self._redis.publish(self._key('status_changes', _db=True), '%s %s' % (tid, status))
+        self._redis.publish(self._key('%s:status_change', tid, _db=True), status)
 
     def mark_as_pending(self, tid):
-        """Setup the task to run when able."""
         super(RedisBroker, self).mark_as_pending(tid)
-        self._redis.rpush(self._format_key('pending_tasks'), tid)
+        self._redis.sadd(self._key('pending_tasks'), tid)
+
+    def mark_as_complete(self, tid, result):
+        super(RedisBroker, self).mark_as_complete(tid, result)
+        self._redis.srem(self._key('pending_tasks'), tid)
+
+    def mark_as_error(self, tid, exception):
+        super(RedisBroker, self).mark_as_error(tid, exception)
+        self._redis.srem(self._key('pending_tasks'), tid)
 
     def iter_pending_tasks(self):
-        for tid in set(self._redis.lrange(self._format_key('pending_tasks'), 0, -1)):
+        for tid in self._redis.smembers(self._key('pending_tasks')):
             yield self.fetch(tid)
-
 
 
 
