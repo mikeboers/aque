@@ -47,10 +47,13 @@ class PostgresBroker(Broker):
                 priority INTEGER NOT NULL DEFAULT 1000,
                 "user" TEXT,
                 "group" TEXT,
+                name TEXT,
                 pattern TEXT,
-                func TEXT,
-                args TEXT,
-                kwargs TEXT
+                func BYTEA,
+                args BYTEA,
+                kwargs BYTEA,
+                result BYTEA,
+                exception BYTEA
             )''')
             cur.execute('''CREATE TABLE IF NOT EXISTS dependencies (
                 depender INTEGER NOT NULL references tasks(id),
@@ -87,6 +90,7 @@ class PostgresBroker(Broker):
             return self._complete_task_row(next(cur), cur)
 
     def _complete_task_row(self, row, cur):
+        row = [str(x) if isinstance(x, buffer) else x for x in row]
         task = dict(zip(self._task_fields, row))
         cur.execute('SELECT dependee FROM dependencies WHERE depender = %s', (task['id'], ))
         task['dependencies'] = [row[0] for row in cur]
@@ -102,7 +106,10 @@ class PostgresBroker(Broker):
                 pass
             else:
                 fields.append(name)
-                params.append(utils.encode_if_required(value))
+                value = utils.encode_if_required(value)
+                if isinstance(value, basestring) and not value.isalnum():
+                    value = buffer(value)
+                params.append(value)
 
         deps = data.pop('dependencies', None)
 

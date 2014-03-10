@@ -17,8 +17,7 @@ class TestOrder(TestCase):
         
         execute(a)
 
-        # TODO: This seems backwards.
-        self.assertEqual(res, ['c', 'b', 'a'])
+        self.assertEqual(res, ['b', 'c', 'a'])
 
     def test_diamond(self):
 
@@ -35,8 +34,7 @@ class TestOrder(TestCase):
 
         execute(a)
 
-        # TODO: This seems backwards.
-        self.assertEqual(res, ['d', 'c', 'b', 'a'])
+        self.assertEqual(res, ['d', 'b', 'c', 'a'])
 
     def test_loop(self):
         a = {}

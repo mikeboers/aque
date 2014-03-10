@@ -1,14 +1,15 @@
-import os
-import urlparse
 from pprint import pprint
 from unittest import TestCase
+import os
+import threading
+import urlparse
 
 import psycopg2 as pg2
 
 from aque import Queue, Future, execute
+from aque.brokers import get_broker
 from aque.exceptions import DependencyError, TaskIncomplete, TaskError
 from aque.worker import Worker
-from aque.brokers import get_broker
 
 
 class BrokerTestCase(TestCase):
@@ -28,7 +29,7 @@ class WorkerTestCase(BrokerTestCase):
 
     def setUp(self):
         super(WorkerTestCase, self).setUp()
-        self.worker_thread = threading.Thread(target=worker.run_forever)
+        self.worker_thread = threading.Thread(target=self.worker.run_forever)
         self.worker_thread.start()
 
     def tearDown(self):
