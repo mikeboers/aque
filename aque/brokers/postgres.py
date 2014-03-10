@@ -90,8 +90,14 @@ class PostgresBroker(Broker):
             return self._complete_task_row(next(cur), cur)
 
     def _complete_task_row(self, row, cur):
-        row = [str(x) if isinstance(x, buffer) else x for x in row]
-        task = dict(zip(self._task_fields, row))
+        decoded = []
+        for x in row:
+            if isinstance(x, buffer):
+                x = str(x)
+            if isinstance(x, basestring) and x.startswith('\\x'):
+                x = x[2:].decode('hex')
+            decoded.append(utils.decode_if_possible(x))
+        task = dict(zip(self._task_fields, decoded))
         cur.execute('SELECT dependee FROM dependencies WHERE depender = %s', (task['id'], ))
         task['dependencies'] = [row[0] for row in cur]
         return task
