@@ -36,6 +36,18 @@ class MemoryBroker(Broker):
     def set_status_and_notify(self, tid, status):
         self.update(tid, {'status': status})
 
+    def mark_as_complete(self, tid, result):
+        self.update(tid, {'status': 'complete', 'result': result})
+        future = self.futures.get(tid)
+        if future:
+            future.set_result(result)
+
+    def mark_as_error(self, tid, exception):
+        self.update(tid, {'status': 'error', 'result': exception})
+        future = self.futures.get(tid)
+        if future:
+            future.set_exception(exception)
+
     def iter_pending_tasks(self):
         for task in self._tasks.itervalues():
             if task['status'] == 'pending':

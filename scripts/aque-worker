@@ -6,4 +6,4 @@ from aque import Worker
 
 
 worker = Worker()
-worker.run_to_end()
+worker.run_forever()

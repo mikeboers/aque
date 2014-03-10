@@ -1,4 +1,8 @@
 - aque-xargs should match as much of xargs as we need
+- aque-kill should kill a task
+    - `aque-kill -r` would kill all dependencies
+
+- make it easier to not kill your production database when testing
 
 - worker should be able to schedule a listener on the broker for when there
   are new tasks so that it can immediately wake up
@@ -6,10 +10,4 @@
 - fork before running tasks
 - do we need a Broker.post_fork() to make sure redis is okay?
 
-- both result and exceptions go into result field
-
 - document relationships of queues, brokers, task prototypes, and futures.
-
-Distant Future
---------------
-- consider migrating to RabbitMQ

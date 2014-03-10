@@ -65,21 +65,13 @@ class Broker(object):
         """Schedule a task to run."""
         self.set_status_and_notify(tid, 'pending')
 
+    @abstractmethod
     def mark_as_complete(self, tid, result):
         """Store a result and set the status to "complete"."""
-        self.update(tid, {'result': result})
-        self.set_status_and_notify(tid, 'complete')
-        future = self.futures.get(tid)
-        if future:
-            future.set_result(result)
 
+    @abstractmethod
     def mark_as_error(self, tid, exc):
         """Store an error and set the status to "error"."""
-        self.update(tid, {'exception': exc})
-        self.set_status_and_notify(tid, 'pending')
-        future = self.futures.get(tid)
-        if future:
-            future.set_exception(exc)
 
     @abstractmethod
     def iter_pending_tasks(self):

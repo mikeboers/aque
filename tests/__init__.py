@@ -16,11 +16,9 @@ class BrokerTestCase(TestCase):
 
     def setUp(self):
         self.name = 'aque' + self.__class__.__name__.title()
-
         self.broker = get_broker()
         self.broker.clear()
         self.broker.init()
-
         self.queue = Queue(self.broker)
         self.worker = Worker(self.broker)
 

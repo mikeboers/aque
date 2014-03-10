@@ -20,6 +20,7 @@ setup(
     
     scripts=[
         'scripts/aque',
+        'scripts/aque-init',
         'scripts/aque-worker',
     ],
     

@@ -43,8 +43,6 @@ class Worker(object):
                     return
             except KeyboardInterrupt:
                 return
-            except Exception:
-                traceback.print_exc()
 
     def capture_task(self):
         for task in self.iter_open_tasks():
@@ -95,24 +93,6 @@ class Worker(object):
             pattern_func(self.broker, task)
         except Exception as e:
             self.broker.mark_as_error(task['id'], e)
-            raise
-        
-
-        task = self.broker.fetch(task['id'])
-        if task['status'] == 'complete':
-            return task['result']
-        elif task['status'] == 'error':
-            raise task['exception']
-        else:
-            raise TaskIncomplete('task %r has incomplete status %r' % (task['id'], task['status']))
-
-
-
-
-
-
-
-
 
 
 if __name__ == '__main__':

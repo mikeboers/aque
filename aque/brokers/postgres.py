@@ -20,7 +20,7 @@ class PostgresBroker(Broker):
         self._kwargs = kwargs
         self._pool = kwargs.pop('pool', None)
         if self._pool is None:
-            self._pool = pg.pool.ThreadedConnectionPool(0, 10, **kwargs)
+            self._pool = pg.pool.ThreadedConnectionPool(0, 4, **kwargs)
 
         self.init()
 
@@ -52,8 +52,7 @@ class PostgresBroker(Broker):
                 func BYTEA,
                 args BYTEA,
                 kwargs BYTEA,
-                result BYTEA,
-                exception BYTEA
+                result BYTEA
             )''')
             cur.execute('''CREATE TABLE IF NOT EXISTS dependencies (
                 depender INTEGER NOT NULL references tasks(id),
@@ -137,6 +136,27 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('''UPDATE tasks SET status = %s WHERE id = %s''', (status, tid))
             cur.execute('''NOTIFY task_status, %s''', ('%d %s' % (tid, status), ))
+
+    def mark_as_complete(self, tid, result):
+        with self._cursor() as cur:
+            cur.execute(
+                '''UPDATE tasks SET status = 'complete', result = %s WHERE id = %s''',
+                (utils.encode_if_required(result), tid),
+            )
+            cur.execute('''NOTIFY task_status, %s''', ['%d complete' % tid])
+        future = self.futures.get(tid)
+        if future:
+            future.set_result(result)
+
+    def mark_as_error(self, tid, exception):
+        with self._cursor() as cur:
+            cur.execute(
+                '''UPDATE tasks SET status = 'error', result = %s WHERE id = %s''',
+                (utils.encode_exception(exception), tid),
+            )
+            cur.execute('''NOTIFY task_status, %s''', ['%d error' % tid])
+        future = self.futures.get(tid)
+        future.set_exception(exception)
 
     def iter_pending_tasks(self):
         with self._cursor() as cur:
