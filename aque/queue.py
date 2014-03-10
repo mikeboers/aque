@@ -4,7 +4,7 @@ import itertools
 import os
 import pwd
 
-from aque.brokers.redis import RedisBroker
+from aque.brokers import get_broker
 from aque.exceptions import DependencyError
 from aque.futures import Future
 from aque.task import Task
@@ -18,12 +18,8 @@ _default_group = grp.getgrgid(_default_user.pw_gid)
 
 class Queue(object):
 
-    def __init__(self, name='aque', hostname='localhost', port=6379, db=0, broker=None, redis=None):
-        if not broker:
-            if not redis:
-                redis = Redis(hostname, port, db)
-            broker = RedisBroker(name=name, redis=redis)
-        self.broker = broker
+    def __init__(self, broker=None):
+        self.broker = get_broker(broker)
 
     def task(func=None, **options):
         if func is None:

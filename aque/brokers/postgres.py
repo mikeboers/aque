@@ -8,32 +8,7 @@ import aque.utils as utils
 from .base import Broker
 
 
-class literal(str):
-
-    def __conform__(self, quote):
-        return self
-
-    @classmethod
-    def mro(cls):
-        return (object, )
-
-    def getquoted(self):
-        return str(self)
-
-
 class PostgresBroker(Broker):
-
-    _fields = (
-        'id',
-        'status',
-        'priority',
-        'user',
-        'group',
-        'pattern',
-        'func',
-        'args',
-        'kwargs',
-    )
 
     @classmethod
     def from_url(cls, parts):
@@ -46,6 +21,8 @@ class PostgresBroker(Broker):
         self._pool = kwargs.pop('pool', None)
         if self._pool is None:
             self._pool = pg.pool.ThreadedConnectionPool(0, 10, **kwargs)
+
+        self.init()
 
     @contextlib.contextmanager
     def _connect(self):
@@ -66,8 +43,8 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
-                status TEXT,
-                priority INTEGER,
+                status TEXT NOT NULL DEFAULT 'creating',
+                priority INTEGER NOT NULL DEFAULT 1000,
                 "user" TEXT,
                 "group" TEXT,
                 pattern TEXT,
@@ -76,10 +53,15 @@ class PostgresBroker(Broker):
                 kwargs TEXT
             )''')
             cur.execute('''CREATE TABLE IF NOT EXISTS dependencies (
-                id SERIAL PRIMARY KEY,
-                depender INTEGER references tasks(id),
-                dependee INTEGER references tasks(id)
+                depender INTEGER NOT NULL references tasks(id),
+                dependee INTEGER NOT NULL references tasks(id),
+                UNIQUE(depender, dependee)
             )''')
+
+            # Determine what fields actually exist.
+            cur.execute('''SELECT column_name FROM information_schema.columns WHERE table_name = 'tasks' ''')
+            self._task_fields = tuple(row[0] for row in cur)
+
 
     def clear(self):
         dbname = self._kwargs['database']
@@ -100,19 +82,20 @@ class PostgresBroker(Broker):
         return self.get_future(tid)
 
     def fetch(self, tid):
-        query = 'SELECT %s FROM tasks WHERE id = %%s' % ', '.join('"%s"' % name for name in self._fields)
         with self._cursor() as cur:
-            cur.execute(query, (tid, ))
-            row = cur.fetchone()
-            task = dict(zip(self._fields, row))
-            cur.execute('SELECT dependee FROM dependencies WHERE depender = %s', (tid, ))
-            task['dependencies'] = [row[0] for row in cur]
+            cur.execute('''SELECT * FROM tasks WHERE id = %s''', (tid, ))
+            return self._complete_task_row(next(cur), cur)
+
+    def _complete_task_row(self, row, cur):
+        task = dict(zip(self._task_fields, row))
+        cur.execute('SELECT dependee FROM dependencies WHERE depender = %s', (task['id'], ))
+        task['dependencies'] = [row[0] for row in cur]
         return task
 
     def update(self, tid, data):
         fields = []
         params = []
-        for name in self._fields:
+        for name in self._task_fields:
             try:
                 value = data.pop(name)
             except KeyError:
@@ -140,11 +123,14 @@ class PostgresBroker(Broker):
     def set_status_and_notify(self, tid, status):
         with self._cursor() as cur:
             cur.execute('''UPDATE tasks SET status = %s WHERE id = %s''', (status, tid))
+            cur.execute('''NOTIFY task_status, %s''', ('%d %s' % (tid, status), ))
 
     def iter_pending_tasks(self):
         with self._cursor() as cur:
             cur.execute('''SELECT * FROM tasks WHERE status = 'pending' ''')
-            for res in cur:
-                yield {'id': res[0]}
+            rows = list(cur)
+            for row in rows:
+                yield self._complete_task_row(row, cur)
+
 
 

@@ -20,6 +20,7 @@ setup(
     
     scripts=[
         'scripts/aque',
+        'scripts/aque-worker',
     ],
     
     entry_points={

@@ -20,8 +20,8 @@ class BrokerTestCase(TestCase):
         self.broker.clear()
         self.broker.init()
 
-        self.queue = Queue(name=self.name, broker=self.broker)
-        self.worker = Worker(broker=self.broker)
+        self.queue = Queue(self.broker)
+        self.worker = Worker(self.broker)
 
 
 class WorkerTestCase(BrokerTestCase):

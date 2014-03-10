@@ -4,17 +4,17 @@ import time
 import traceback
 import threading
 
+from aque.brokers import get_broker
+from aque.exceptions import TaskIncomplete
+from aque.futures import Future
 from aque.utils import decode_callable, encode_if_required, decode_if_possible
 import aque.patterns
-from .futures import Future
-from .exceptions import TaskIncomplete
-
 
 
 class Worker(object):
 
-    def __init__(self, broker):
-        self.broker = broker
+    def __init__(self, broker=None):
+        self.broker = get_broker(broker)
         self._stopper = threading.Event()
 
     def stop(self):

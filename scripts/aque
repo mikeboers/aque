@@ -6,5 +6,5 @@ from aque import Queue
 
 
 queue = Queue()
-future = queue.submit_prototype({'pattern': 'shell', 'args': sys.argv[1:]})
+future = queue.submit_ex(pattern='shell', args=sys.argv[1:])
 print future.id

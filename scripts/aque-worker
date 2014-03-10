@@ -1,0 +1,9 @@
+#!python
+
+import sys
+
+from aque import Worker
+
+
+worker = Worker()
+worker.run_to_end()
