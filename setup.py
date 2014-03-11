@@ -18,12 +18,6 @@ setup(
         'futures',
     ],
     
-    scripts=[
-        'scripts/aque',
-        'scripts/aque-init',
-        'scripts/aque-worker',
-    ],
-    
     entry_points={
         'aque_patterns': [
             'generic = aque.patterns.generic:do_generic_task',
@@ -34,6 +28,9 @@ setup(
             'memory = aque.brokers.memory:MemoryBroker',
             'redis = aque.brokers.redis:RedisBroker',
             'postgres = aque.brokers.postgres:PostgresBroker',
+        ],
+        'console_scripts': [
+            'aque = aque.commands.main:main',
         ],
     },
 

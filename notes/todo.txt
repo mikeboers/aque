@@ -2,6 +2,7 @@
 
 - joining to arrays: aquetest=# select * from node as a, node as b where b.id = ANY(a.parent);
 
+- aque-ps to inspect tasks
 
 - enumerate all of the states:
     - creating
@@ -15,6 +16,17 @@
         READY_STATES
         UNREADY_STATES
         COMPLETE_STATES
+
+- aque-rm
+    --complete or --all or specific IDs
+- aque-init --reset
+    broker.init_schema()
+    broker.destroy_schema() destroys everything
+
+- Broker
+    Broker.parse_url(url) -> kwargs
+    Broker(init_schema=True)
+    broker.destroy_schema()
 
 - aque-xargs should match as much of xargs as we need
 - aque-kill should kill a task

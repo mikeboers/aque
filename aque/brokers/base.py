@@ -10,24 +10,43 @@ class Broker(object):
     serialization required therein), and for orchestrating notifications
     between all parties.
 
-    The API is as minimal as possible towards that goal."""
+    The API is as minimal as possible towards that goal.
+
+    """
 
     __metaclass__ = ABCMeta
 
     @classmethod
     def from_url(cls, parts):
-        """Construct a broker from the results of :func:`urlparse.urlsplit`."""
+        """Construct a broker from a URL.
+
+        :param url: either a ``str`` or results from :func:`urlparse.urlsplit`.
+        :returns: :class:`Broker`
+
+        """
         return cls()
 
     def __init__(self):
         self.futures = {}
 
-    def clear(self):
-        """Clear out all data from this broker."""
+    # BROKER API
+
+    def update_schema(self):
+        """Assert that the backend schema exists, and is up to date."""
+
+    def destroy_data(self):
+        """Destroy all data.
+
+        Depending on the broker, the instance may no longer be usable, and
+        the underlying storage may require :meth:`update_schema` be called
+        before reuse."""
 
     def close(self):
-        pass
+        """Closes all resources in use by the :class:`Broker`."""
     
+
+    # LOW-LEVEL TASK API
+
     @abstractmethod
     def create(self, prototype=None):
         """Create a task, and return a Future."""
@@ -45,7 +64,8 @@ class Broker(object):
 
         Generally used for finalizing the construction of tasks."""
 
-    # High-level API
+
+    # HIGH-LEVEL TASK API
 
     def get_future(self, tid):
         """Get a Future for a given task ID.

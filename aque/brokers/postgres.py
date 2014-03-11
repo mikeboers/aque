@@ -65,6 +65,7 @@ class PostgresBroker(Broker):
 
     def _init(self, cur=None):
         with (cur or self._cursor()) as cur:
+            
             cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
                 dependencies INTEGER[],
@@ -125,6 +126,7 @@ class PostgresBroker(Broker):
         return dict((name, self._decode(x)) for (name, type_), x in zip(self._task_fields, row))
 
     def update(self, tid, data):
+
         fields = []
         params = []
         for name, type_ in self._task_fields:
@@ -141,8 +143,9 @@ class PostgresBroker(Broker):
         if data:
             raise ValueError('unexpected keys: %s' % ', '.join(sorted(data)))
 
-        params.append(tid)
         query = 'UPDATE tasks SET %s WHERE id = %%s' % ', '.join('"%s" = %%s' % name for name in fields)
+        params.append(tid)
+
         with self._cursor() as cur:
             cur.execute(query, params)
 
