@@ -53,7 +53,7 @@ class Worker(object):
 
     def iter_open_tasks(self):
 
-        tasks = list(self.broker.iter_pending_tasks())
+        tasks = list(self.broker.iter_tasks(status='pending'))
         tasks.sort(key=lambda task: (-task.get('priority', 1000), task['id']))
 
         considered = set()

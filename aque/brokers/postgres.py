@@ -28,7 +28,7 @@ class PostgresBroker(Broker):
             # kwargs['connection_factory'] = pg.extras.LoggingConnection
             self._pool = pg.pool.ThreadedConnectionPool(0, 4, **kwargs)
 
-        self._init()
+        self._inspect_schema()
 
         self._notify_stopper = utils.WaitableEvent()
         self._notify_lock = threading.Lock()
@@ -63,9 +63,8 @@ class PostgresBroker(Broker):
             with conn.cursor() as cur:
                 yield cur
 
-    def _init(self, cur=None):
-        with (cur or self._cursor()) as cur:
-            
+    def update_schema(self):
+        with self._cursor() as cur:
             cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
                 dependencies INTEGER[],
@@ -81,15 +80,16 @@ class PostgresBroker(Broker):
                 result BYTEA
             )''')
 
+    def _inspect_schema(self):
+        with self._cursor() as cur:
             # Determine what rows we actually have.
             cur.execute('''SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tasks' ''')
             self._task_fields = tuple(cur)
 
-    def clear(self):
+    def destroy_schema(self):
         with self._cursor() as cur:
             cur.execute('''DROP TABLE IF EXISTS dependencies''')
             cur.execute('''DROP TABLE IF EXISTS tasks''')
-            self._init(cur)
 
     def get_future(self, tid):
         future = super(PostgresBroker, self).get_future(tid)
@@ -179,10 +179,20 @@ class PostgresBroker(Broker):
                 'status': 'error',
             })])
 
-    def iter_pending_tasks(self):
+    def iter_tasks(self, **kwargs):
         with self._cursor() as cur:
-            cur.execute('''SELECT * FROM tasks WHERE status = 'pending' ''')
+
+            if kwargs:
+                items = sorted(kwargs.iteritems())
+                clause = 'WHERE ' + ' AND '.join('%s = %%s' % k for k, v in items)
+                params = [v for k, v in items]
+            else:
+                clause = ''
+                params = []
+
+            cur.execute('''SELECT * FROM tasks %s''' % clause, params)
             rows = list(cur)
+
         for row in rows:
             yield self._decode_task(row)
 

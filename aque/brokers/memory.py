@@ -48,8 +48,10 @@ class MemoryBroker(Broker):
         if future:
             future.set_exception(exception)
 
-    def iter_pending_tasks(self):
+    def iter_tasks(self, **kwargs):
         for task in self._tasks.itervalues():
-            if task['status'] == 'pending':
-                yield task.copy()
+            for k, v in kwargs.iteritems():
+                if task.get(k) != v:
+                    continue
+            yield task.copy()
 

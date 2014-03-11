@@ -90,6 +90,6 @@ class Broker(object):
         """Store an error and set the status to "error"."""
 
     @abstractmethod
-    def iter_pending_tasks(self):
-        """Get a list of IDs of all top-level pending tasks."""
+    def iter_tasks(self, status=None):
+        """Get all tasks (restricted to the given status)."""
 
