@@ -58,6 +58,20 @@ class Broker(object):
         ``retval['id']`` MUST be ``tid``.
         """
 
+    def fetch_many(self, tids):
+        """Get the data for several tasks.
+
+        Missing tasks will not be in the resultant dictionary.
+
+        """
+        res = {}
+        for tid in tids:
+            try:
+                res[tid] = self.fetch(tid)
+            except ValueError:
+                pass
+        return res
+
     @abstractmethod
     def update(self, tid, data):
         """Update the given task with the given data, but do NOT notify anyone.

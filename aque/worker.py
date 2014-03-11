@@ -37,6 +37,7 @@ class Worker(object):
         while True:
             try:
                 self.run_to_end()
+                print 'waiting for more work...'
                 if self._stopper.wait(1):
                     return
             except KeyboardInterrupt:
@@ -54,10 +55,11 @@ class Worker(object):
     def iter_open_tasks(self):
 
         tasks = list(self.broker.iter_tasks(status='pending'))
-        tasks.sort(key=lambda task: (-task.get('priority', 1000), task['id']))
 
         considered = set()
         while tasks:
+
+            tasks.sort(key=lambda task: (-task.get('priority', 1000), task['id']))
 
             task = tasks.pop(0)
             if task['id'] in considered:
@@ -66,7 +68,8 @@ class Worker(object):
 
             # TODO: make sure someone isn't working on it already.
 
-            deps = [self.broker.fetch(x) for x in task.get('dependencies', ())]
+            dep_ids = task.get('dependencies')
+            deps = self.broker.fetch_many(dep_ids).values()
             if any(dep['status'] != 'success' for dep in deps):
                 tasks.extend(deps)
                 continue
@@ -83,8 +86,12 @@ class Worker(object):
 
         pattern_name = task.get('pattern', 'generic')
         pattern_func = aque.patterns.registry.get(pattern_name, pattern_name)
-        pattern_func = decode_callable(pattern_func, 'aque_patterns')
 
+        if pattern_func is None:
+            self.broker.mark_as_success(task['id'], None)
+            return
+
+        pattern_func = decode_callable(pattern_func, 'aque_patterns')
         if pattern_func is None:
             raise TaskError('unknown pattern %r' % pattern_name)
         
@@ -94,6 +101,7 @@ class Worker(object):
             raise
         except Exception as e:
             self.broker.mark_as_error(task['id'], e)
+            traceback.print_exc()
 
 
 if __name__ == '__main__':

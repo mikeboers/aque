@@ -8,7 +8,9 @@ from aque.commands.main import command, argument
     aliases=['ps'],
 )
 def status(args):
-    for task in args.broker.iter_tasks():
+    tasks = list(args.broker.iter_tasks())
+    tasks.sort(key=lambda t: t['id'])
+    for task in tasks:
 
         arg_specs = []
         for arg in (task.get('args') or ()):
@@ -22,4 +24,13 @@ def status(args):
             func_name = ''
         func_spec = '%s(%s)' % (func_name, ', '.join(arg_specs))
 
-        print '{id:5d} {status:7s} {pattern:7s} {func_spec}'.format(func_spec=func_spec, **task)
+        parts = [
+            '%5d' % task['id'],
+            '%7s' % task['status'],
+            '%7s' % (task['pattern'] or '-'),
+        ]
+        if task.get('name'):
+            parts.append(repr(task['name']))
+        parts.append(func_spec)
+
+        print ' '.join(parts)

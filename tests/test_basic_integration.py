@@ -32,3 +32,4 @@ class TestBasicIntegration(BrokerTestCase):
 
         self.assertRaises(ValueError, f_value.result, 0.1)
         self.assertRaises(TypeError, f_type.result, 0.1)
+        self.assertRaises(RuntimeError, f_runtime.result, 0.1)

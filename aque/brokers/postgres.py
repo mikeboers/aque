@@ -106,8 +106,24 @@ class PostgresBroker(Broker):
 
     def fetch(self, tid):
         with self._cursor() as cur:
-            cur.execute('''SELECT * FROM tasks WHERE id = %s''', (tid, ))
-            return self._decode_task(next(cur))
+            cur.execute('''SELECT * FROM tasks WHERE id = %s''', [tid])
+            try:
+                row = next(cur)
+            except StopIteration:
+                raise ValueError('unknown task %r' % tid)
+            return self._decode_task(row)
+
+    def fetch_many(self, tids):
+        if not tids:
+            return {}
+        with self._cursor() as cur:
+            cur.execute('''SELECT * FROM tasks WHERE id = ANY(%s)''', [list(tids)])
+            rows = list(cur)
+        tasks = {}
+        for row in rows:
+            task = self._decode_task(row)
+            tasks[task['id']] = task
+        return tasks
 
     def _encode(self, x):
         x = utils.encode_if_required(x)
