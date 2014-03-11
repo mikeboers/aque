@@ -35,6 +35,7 @@ setup(
             'rm = aque.commands.rm:rm',
             'submit = aque.commands.submit:submit',
             'worker = aque.commands.worker:worker',
+            'xargs = aque.commands.xargs:xargs',
         ],
         'console_scripts': [
             'aque = aque.commands.main:main',
