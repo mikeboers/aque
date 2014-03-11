@@ -26,8 +26,15 @@ setup(
         ],
         'aque_brokers': [
             'memory = aque.brokers.memory:MemoryBroker',
-            'redis = aque.brokers.redis:RedisBroker',
             'postgres = aque.brokers.postgres:PostgresBroker',
+            'redis = aque.brokers.redis:RedisBroker',
+        ],
+        'aque_commands': [
+            'init = aque.commands.init:init',
+            'status = aque.commands.status:status',
+            'rm = aque.commands.rm:rm',
+            'submit = aque.commands.submit:submit',
+            'worker = aque.commands.worker:worker',
         ],
         'console_scripts': [
             'aque = aque.commands.main:main',

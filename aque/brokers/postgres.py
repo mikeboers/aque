@@ -149,6 +149,10 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute(query, params)
 
+    def delete(self, tid):
+        with self._cursor() as cur:
+            cur.execute('DELETE FROM tasks WHERE id = %s', [tid])
+    
     def set_status_and_notify(self, tid, status):
         with self._cursor() as cur:
             cur.execute('''UPDATE tasks SET status = %s WHERE id = %s''', (status, tid))
@@ -194,7 +198,10 @@ class PostgresBroker(Broker):
             rows = list(cur)
 
         for row in rows:
-            yield self._decode_task(row)
+            try:
+                yield self._decode_task(row)
+            except (ImportError, ValueError):
+                pass
 
     def _notify_target(self):
         with self._connect() as conn:

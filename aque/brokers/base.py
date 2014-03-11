@@ -64,7 +64,10 @@ class Broker(object):
 
         Generally used for finalizing the construction of tasks."""
 
-
+    @abstractmethod
+    def delete(self, tid):
+        """Delete the given task."""
+    
     # HIGH-LEVEL TASK API
 
     def get_future(self, tid):
@@ -90,6 +93,12 @@ class Broker(object):
         """Store an error and set the status to "error"."""
 
     @abstractmethod
-    def iter_tasks(self, status=None):
-        """Get all tasks (restricted to the given status)."""
+    def iter_tasks(self, **kwargs):
+        """Get all tasks (restricted to the given fields).
+
+        E.g.::
+            broker.iter_tasks(status='pending')
+            # returns iterator of pending tasks
+
+        """
 

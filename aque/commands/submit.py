@@ -1,7 +1,6 @@
 import sys
 
 from aque.commands.main import command, argument
-from aque.queue import Queue
 
 
 @command(
