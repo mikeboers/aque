@@ -16,7 +16,10 @@ class MemoryBroker(Broker):
         self._tasks = {}
         self._id_counter = 0
 
-    def clear(self):
+    def update_schema(self):
+        pass
+    
+    def destroy_schema(self):
         self._init()
 
     def create(self, prototype=None):
@@ -32,6 +35,9 @@ class MemoryBroker(Broker):
 
     def update(self, tid, data):
         self._tasks.setdefault(tid, {}).update(data)
+
+    def delete(self, tid):
+        self._tasks.pop(tid, None)
 
     def set_status_and_notify(self, tid, status):
         self.update(tid, {'status': status})
