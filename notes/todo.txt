@@ -1,10 +1,20 @@
-- enumerate all of the statuses:
+- could I make this thing only be on postgres?
+
+- joining to arrays: aquetest=# select * from node as a, node as b where b.id = ANY(a.parent);
+
+
+- enumerate all of the states:
     - creating
     - pending
     - cancelled
     - running (I don't know if this would actually exist though)
     - success
     - error
+
+    - creqte aque.states with sets of the above:
+        READY_STATES
+        UNREADY_STATES
+        COMPLETE_STATES
 
 - aque-xargs should match as much of xargs as we need
 - aque-kill should kill a task

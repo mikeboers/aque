@@ -67,26 +67,22 @@ class PostgresBroker(Broker):
         with (cur or self._cursor()) as cur:
             cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
+                dependencies INTEGER[],
                 status TEXT NOT NULL DEFAULT 'creating',
                 priority INTEGER NOT NULL DEFAULT 1000,
                 "user" TEXT,
                 "group" TEXT,
                 name TEXT,
-                pattern TEXT,
+                pattern BYTEA,
                 func BYTEA,
                 args BYTEA,
                 kwargs BYTEA,
                 result BYTEA
             )''')
-            cur.execute('''CREATE TABLE IF NOT EXISTS dependencies (
-                depender INTEGER NOT NULL references tasks(id),
-                dependee INTEGER NOT NULL references tasks(id),
-                UNIQUE(depender, dependee)
-            )''')
 
             # Determine what rows we actually have.
-            cur.execute('''SELECT column_name FROM information_schema.columns WHERE table_name = 'tasks' ''')
-            self._task_fields = tuple(row[0] for row in cur)
+            cur.execute('''SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tasks' ''')
+            self._task_fields = tuple(cur)
 
     def clear(self):
         with self._cursor() as cur:
@@ -110,7 +106,7 @@ class PostgresBroker(Broker):
     def fetch(self, tid):
         with self._cursor() as cur:
             cur.execute('''SELECT * FROM tasks WHERE id = %s''', (tid, ))
-            return self._complete_task_row(next(cur), cur)
+            return self._decode_task(next(cur))
 
     def _encode(self, x):
         x = utils.encode_if_required(x)
@@ -125,26 +121,22 @@ class PostgresBroker(Broker):
             x = x[2:].decode('hex')
         return utils.decode_if_possible(x)
 
-    def _complete_task_row(self, row, cur):
-        decoded = [self._decode(x) for x in row]
-        task = dict(zip(self._task_fields, decoded))
-        cur.execute('SELECT dependee FROM dependencies WHERE depender = %s', (task['id'], ))
-        task['dependencies'] = [row[0] for row in cur]
-        return task
+    def _decode_task(self, row):
+        return dict((name, self._decode(x)) for (name, type_), x in zip(self._task_fields, row))
 
     def update(self, tid, data):
         fields = []
         params = []
-        for name in self._task_fields:
+        for name, type_ in self._task_fields:
             try:
                 value = data.pop(name)
             except KeyError:
                 pass
             else:
                 fields.append(name)
-                params.append(self._encode(value))
-
-        deps = data.pop('dependencies', None)
+                if type_ == 'bytea':
+                    value = self._encode(value)
+                params.append(value)
 
         if data:
             raise ValueError('unexpected keys: %s' % ', '.join(sorted(data)))
@@ -153,12 +145,6 @@ class PostgresBroker(Broker):
         query = 'UPDATE tasks SET %s WHERE id = %%s' % ', '.join('"%s" = %%s' % name for name in fields)
         with self._cursor() as cur:
             cur.execute(query, params)
-            if deps is not None:
-                cur.execute('DELETE FROM dependencies WHERE depender = %s', (tid, ))
-                cur.executemany(
-                    'INSERT INTO dependencies(depender, dependee) VALUES(%s, %s)',
-                    [(tid, dep) for dep in deps]
-                )
 
     def set_status_and_notify(self, tid, status):
         with self._cursor() as cur:
@@ -194,8 +180,8 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('''SELECT * FROM tasks WHERE status = 'pending' ''')
             rows = list(cur)
-            for row in rows:
-                yield self._complete_task_row(row, cur)
+        for row in rows:
+            yield self._decode_task(row)
 
     def _notify_target(self):
         with self._connect() as conn:
