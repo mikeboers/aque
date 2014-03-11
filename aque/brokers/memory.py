@@ -10,14 +10,14 @@ class MemoryBroker(Broker):
     def __init__(self):
         super(MemoryBroker, self).__init__()
         self._id_lock = threading.Lock()
-        self.init()
+        self._init()
 
-    def init(self):
+    def _init(self):
         self._tasks = {}
         self._id_counter = 0
 
     def clear(self):
-        self.init()
+        self._init()
 
     def create(self, prototype=None):
         with self._id_lock:

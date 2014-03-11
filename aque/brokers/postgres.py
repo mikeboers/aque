@@ -2,9 +2,11 @@ import contextlib
 import json
 import threading
 import select
+import logging
 from Queue import Queue, Empty
 
 import psycopg2.pool
+import psycopg2.extras
 import psycopg2 as pg
 
 import aque.utils as utils
@@ -23,14 +25,14 @@ class PostgresBroker(Broker):
         self._kwargs = kwargs
         self._pool = kwargs.pop('pool', None)
         if self._pool is None:
+            # kwargs['connection_factory'] = pg.extras.LoggingConnection
             self._pool = pg.pool.ThreadedConnectionPool(0, 4, **kwargs)
+
+        self._init()
 
         self._notify_stopper = utils.WaitableEvent()
         self._notify_lock = threading.Lock()
         self._notify_thread = None
-        self._notify_queues = {}
-
-        self.init()
 
     def __del__(self):
         self.close()
@@ -41,13 +43,14 @@ class PostgresBroker(Broker):
     def _notify_start(self):
         with self._notify_lock:
             if not self._notify_thread:
-                self._notify_thread = threading.Thread(target=self._event_thread_target)
+                self._notify_thread = threading.Thread(target=self._notify_target)
                 self._notify_thread.daemon=True
                 self._notify_thread.start()
 
     @contextlib.contextmanager
     def _connect(self):
         conn = self._pool.getconn()
+        # conn.initialize(logging.getLogger('aque.sql'))
         try:
             yield conn
             conn.commit()
@@ -60,9 +63,8 @@ class PostgresBroker(Broker):
             with conn.cursor() as cur:
                 yield cur
 
-    def init(self):
-
-        with self._cursor() as cur:
+    def _init(self, cur=None):
+        with (cur or self._cursor()) as cur:
             cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
                 status TEXT NOT NULL DEFAULT 'creating',
@@ -82,20 +84,15 @@ class PostgresBroker(Broker):
                 UNIQUE(depender, dependee)
             )''')
 
-            # Determine what fields actually exist.
+            # Determine what rows we actually have.
             cur.execute('''SELECT column_name FROM information_schema.columns WHERE table_name = 'tasks' ''')
             self._task_fields = tuple(row[0] for row in cur)
 
-
     def clear(self):
-        dbname = self._kwargs['database']
-        kwargs = self._kwargs.copy()
-        kwargs['database'] = 'postgres'
-        with pg.connect(**kwargs) as conn:
-            conn.set_isolation_level(0)
-            with conn.cursor() as cur:
-                cur.execute('DROP DATABASE IF EXISTS %s' % dbname)
-                cur.execute('CREATE DATABASE %s' % dbname)
+        with self._cursor() as cur:
+            cur.execute('''DROP TABLE IF EXISTS dependencies''')
+            cur.execute('''DROP TABLE IF EXISTS tasks''')
+            self._init(cur)
 
     def get_future(self, tid):
         future = super(PostgresBroker, self).get_future(tid)
@@ -118,7 +115,7 @@ class PostgresBroker(Broker):
     def _encode(self, x):
         x = utils.encode_if_required(x)
         if isinstance(x, basestring) and not x.isalnum():
-            x = buffer(x)
+            x = pg.Binary(x)
         return x
 
     def _decode(self, x):
@@ -200,33 +197,7 @@ class PostgresBroker(Broker):
             for row in rows:
                 yield self._complete_task_row(row, cur)
 
-    def wait_for(self, tid, timeout=None):
-
-        raise NotImplementedError()
-
-        # Schedule ourselves to receive events.
-        queue = Queue()
-        with self._notify_lock:
-            self._notify_queues.setdefault(tid, []).append(queue)
-
-        # Lets take a look at the actual status, however.
-        with self._cursor() as cur:
-            cur.execute('SELECT status FROM tasks WHERE id = %s', [tid])
-            status = next(cur)[0]
-
-        # Wait for a non-pending status.
-        while status == 'pending':
-            try:
-                status = queue.get(True, timeout)
-            except Empty:
-                break
-
-        # Unschedule ourselves.
-        self._notify_queues[tid].remove(queue)
-
-        return status
-
-    def _event_thread_target(self):
+    def _notify_target(self):
         with self._connect() as conn:
 
             cur = conn.cursor()

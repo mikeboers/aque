@@ -22,15 +22,8 @@ class Broker(object):
     def __init__(self):
         self.futures = {}
 
-    def init(self):
-        """Initialize the storage backing this broker.
-
-        Normally only called by workers."""
-
     def clear(self):
-        """Destroy all storage backing this broker.
-
-        The broker is unusable unless :meth:`.init` is called."""
+        """Clear out all data from this broker."""
 
     def close(self):
         pass

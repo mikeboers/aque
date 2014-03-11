@@ -18,9 +18,9 @@ class TestBasicIntegration(BrokerTestCase):
 
         self.worker.run_to_end()
 
-        self.assertEqual(f_list.result(0), [])
-        self.assertEqual(f_upper.result(0), 'HELLO')
-        self.assertEqual(f_eval.result(0), 123)
+        self.assertEqual(f_list.result(0.1), [])
+        self.assertEqual(f_upper.result(0.1), 'HELLO')
+        self.assertEqual(f_eval.result(0.1), 123)
 
     def test_errors(self):
 
@@ -30,5 +30,5 @@ class TestBasicIntegration(BrokerTestCase):
 
         self.worker.run_to_end()
 
-        self.assertRaises(ValueError, f_value.result, 0)
-        self.assertRaises(TypeError, f_type.result, 0)
+        self.assertRaises(ValueError, f_value.result, 0.1)
+        self.assertRaises(TypeError, f_type.result, 0.1)
