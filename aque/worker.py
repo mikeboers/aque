@@ -12,7 +12,6 @@ from aque.brokers import get_broker
 from aque.exceptions import TaskIncomplete
 from aque.futures import Future
 from aque.utils import decode_callable, encode_if_required, decode_if_possible
-import aque.patterns
 
 
 class Worker(object):
@@ -89,13 +88,11 @@ class Worker(object):
         """
 
         pattern_name = task.get('pattern', 'generic')
-        pattern_func = aque.patterns.registry.get(pattern_name, pattern_name)
-
-        if pattern_func is None:
+        if pattern_name is None:
             self.broker.mark_as_success(task['id'], None)
             return
 
-        pattern_func = decode_callable(pattern_func, 'aque_patterns')
+        pattern_func = decode_callable(pattern_name, 'aque_patterns')
         if pattern_func is None:
             raise TaskError('unknown pattern %r' % pattern_name)
         
