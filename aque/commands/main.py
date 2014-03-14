@@ -27,7 +27,7 @@ def command(*args, **kwargs):
     return _decorator
 
 
-def main():
+def main(argv=None):
 
     parser = argparse.ArgumentParser()
     parser.register('action', 'parsers', AliasedSubParsersAction)
@@ -50,12 +50,18 @@ def main():
         for arg_args, arg_kwargs in args:
             subparser.add_argument(*arg_args, **arg_kwargs)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not args.func:
         parser.print_usage()
         exit(1)
 
     args.broker = get_broker(args.broker_url)
     args.queue = Queue(args.broker)
-    exit(args.func(args) or 0)
+    res = args.func(args) or 0
+
+    if __name__ == '__main__':
+        exit(res)
+    else:
+        return res
+
 
