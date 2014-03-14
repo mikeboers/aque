@@ -3,6 +3,8 @@
 - test the new command line Aque interface
     - make the main func take args so that we can call it within the same process
 
+- task['stdin'] for general stdin remapping?
+- task['kwargs']['stdin'] = 'something' for shell pattern
 
 - enumerate all of the states:
     - creating
@@ -79,8 +81,5 @@
     broker.register_worker(self)
         - store it in a weakref dict
     broker will then call worker.wake_for_work() when there is new pending work
-
-- fork before running tasks
-    - broker.did_fork() to repair whatever connections
 
 - document relationships of queues, brokers, task prototypes, and futures.

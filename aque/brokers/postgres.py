@@ -23,16 +23,19 @@ class PostgresBroker(Broker):
         super(PostgresBroker, self).__init__()
 
         self._kwargs = kwargs
-        self._pool = kwargs.pop('pool', None)
-        if self._pool is None:
-            # kwargs['connection_factory'] = pg.extras.LoggingConnection
-            self._pool = pg.pool.ThreadedConnectionPool(0, 4, **kwargs)
+        self._pool = self._open_pool()
 
         self._inspect_schema()
 
         self._notify_stopper = utils.WaitableEvent()
         self._notify_lock = threading.Lock()
         self._notify_thread = None
+
+    def _open_pool(self):
+        return pg.pool.ThreadedConnectionPool(0, 4, **self._kwargs)
+
+    def did_fork(self):
+        self._pool = self._open_pool()
 
     def __del__(self):
         self.close()

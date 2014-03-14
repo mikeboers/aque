@@ -33,6 +33,9 @@ class Broker(object):
 
     # BROKER API
 
+    def did_fork(self):
+        """Called by a :class:`Worker` after forking."""
+    
     def update_schema(self):
         """Assert that the backend schema exists, and is up to date."""
 
