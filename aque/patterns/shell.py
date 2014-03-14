@@ -8,8 +8,26 @@ log = logging.getLogger(__name__)
 def do_shell_task(broker, task):
 
     cmd = task['args']
+    kwargs = task.get('kwargs') or {}
 
-    proc = subprocess.Popen(cmd)
+    stdin_content = kwargs.pop('stdin', None)
+    for name, mode in (
+        ('stdin', 'r'),
+        ('stdout', 'w'),
+        ('stderr', 'w')
+    ):
+        key = name + "_path"
+        if key in kwargs:
+            kwargs[name] = open(kwargs.pop(key), mode)
+
+    if stdin_content:
+        kwargs['stdin'] = subprocess.PIPE
+
+    proc = subprocess.Popen(cmd, **kwargs)
+    if stdin_content:
+        proc.stdin.write(stdin_content)
+        proc.stdin.close()
+
     code = proc.wait()
 
     if code:

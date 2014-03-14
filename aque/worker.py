@@ -129,23 +129,23 @@ class Worker(object):
         else:
             self._execute(pattern_func, task)
 
-    def _forked_execute(self, func, task, out, err):
+    def _forked_execute(self, func, task, out_fd, err_fd):
 
         self.broker.did_fork()
-        
+
         # Prep the stdio; close stdin and redirect stdout/err to the parent's
         # preferred pipes. Everything should clean itself up.
         os.close(0)
-        os.dup2(out, 1)
-        os.dup2(err, 2)
+        os.dup2(out_fd, 1)
+        os.dup2(err_fd, 2)
 
         self._execute(func, task)
 
-    def _watch_fds(self, out, err):
-        fds = [out, err]
+    def _watch_fds(self, out_fd, err_fd):
+        fds = [out_fd, err_fd]
         redirections = {
-            out: sys.stdout,
-            err: sys.stderr,
+            out_fd: sys.stdout,
+            err_fd: sys.stderr,
         }
         while fds:
             rfds, _, _ = select.select(fds, [], [], 1.0)
