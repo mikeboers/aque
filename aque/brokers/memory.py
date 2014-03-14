@@ -7,6 +7,8 @@ from .base import Broker
 class MemoryBroker(Broker):
     """A :class:`.Broker` which holds everything in memory."""
 
+    can_fork = False
+    
     def __init__(self):
         super(MemoryBroker, self).__init__()
         self._id_lock = threading.Lock()

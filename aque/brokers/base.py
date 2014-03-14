@@ -16,6 +16,8 @@ class Broker(object):
 
     __metaclass__ = ABCMeta
 
+    can_fork = True
+    
     @classmethod
     def from_url(cls, parts):
         """Construct a broker from a URL.

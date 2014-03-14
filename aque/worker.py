@@ -3,6 +3,10 @@ import pprint
 import time
 import traceback
 import threading
+import select
+import multiprocessing
+import sys
+import os
 
 from aque.brokers import get_broker
 from aque.exceptions import TaskIncomplete
@@ -95,13 +99,51 @@ class Worker(object):
         if pattern_func is None:
             raise TaskError('unknown pattern %r' % pattern_name)
         
+        if self.broker.can_fork:
+            out_r, out_w = os.pipe()
+            err_r, err_w = os.pipe()
+            thread = threading.Thread(target=self._watch_fds, args=(out_r, err_r))
+            thread.daemon = True
+            thread.start()
+            proc = multiprocessing.Process(target=self._execute_subproc, args=(
+                pattern_func, task, (out_w, err_w),
+            ))
+            proc.start()
+            os.close(out_w)
+            os.close(err_w)
+            proc.join()
+        else:
+            self._execute_subproc(pattern_func, task)
+
+    def _execute_subproc(self, func, task, fds=None):
+        if fds:
+            os.dup2(fds[0], 1)
+            os.dup2(fds[1], 2)
         try:
-            pattern_func(self.broker, task)
+            func(self.broker, task)
         except KeyboardInterrupt:
             raise
         except Exception as e:
             self.broker.mark_as_error(task['id'], e)
             traceback.print_exc()
+        finally:
+            if fds:
+                os.close(fds[0])
+                os.close(fds[1])
+
+    def _watch_fds(self, out, err):
+        fds = [out, err]
+        while fds:
+            rfds, _, _ = select.select(fds, [], [], 1.0)
+            for fd in rfds:
+                out = os.read(fd, 8096)
+                if out:
+                    sys.stdout.write(out)
+                    sys.stdout.flush()
+                else:
+                    fds.remove(fd)
+
+
 
 
 if __name__ == '__main__':
