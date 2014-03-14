@@ -87,14 +87,10 @@ class Worker(object):
 
         """
 
-        pattern_name = task.get('pattern', 'generic')
-        if pattern_name is None:
+        # Shortcut for grouping tasks.
+        if task.get('pattern', 'xxx') is None:
             self.broker.mark_as_success(task['id'], None)
             return
-
-        pattern_func = decode_callable(pattern_name, 'aque_patterns')
-        if pattern_func is None:
-            raise TaskError('unknown pattern %r' % pattern_name)
         
         # If we are allowed, we will run the work in a subprocess.
         if self.broker.can_fork:
@@ -111,7 +107,7 @@ class Worker(object):
 
             # Start the actuall subprocess.
             proc = multiprocessing.Process(target=self._forked_execute, args=(
-                pattern_func, task, out_w, err_w,
+                task, out_w, err_w,
             ))
             proc.start()
 
@@ -124,9 +120,9 @@ class Worker(object):
             proc.join()
 
         else:
-            self._execute(pattern_func, task)
+            self._execute(task)
 
-    def _forked_execute(self, func, task, out_fd, err_fd):
+    def _forked_execute(self, task, out_fd, err_fd):
 
         self.broker.did_fork()
 
@@ -136,7 +132,7 @@ class Worker(object):
         os.dup2(out_fd, 1)
         os.dup2(err_fd, 2)
 
-        self._execute(func, task)
+        self._execute(task)
 
     def _watch_fds(self, out_fd, err_fd):
         fds = [out_fd, err_fd]
@@ -155,9 +151,13 @@ class Worker(object):
                 else:
                     fds.remove(fd)
 
-    def _execute(self, func, task):
+    def _execute(self, task):
         try:
-            func(self.broker, task)
+            encoded_pattern = task.get('pattern', 'generic')
+            pattern_func = decode_callable(encoded_pattern, 'aque_patterns')
+            if pattern_func is None:
+                raise TaskError('unknown pattern %r' % encoded_pattern)
+            pattern_func(self.broker, task)
         except KeyboardInterrupt:
             raise
         except Exception as e:
