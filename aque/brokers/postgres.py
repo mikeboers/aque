@@ -70,16 +70,16 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
+                name TEXT,
                 dependencies INTEGER[],
                 status TEXT NOT NULL DEFAULT 'creating',
                 priority INTEGER NOT NULL DEFAULT 1000,
-                "user" TEXT,
-                "group" TEXT,
-                name TEXT,
                 pattern BYTEA,
                 func BYTEA,
                 args BYTEA,
                 kwargs BYTEA,
+                "user" TEXT,
+                "group" TEXT,
                 result BYTEA,
                 extra BYTEA
             )''')

@@ -54,16 +54,16 @@ class Queue(object):
                 raise DependencyError('dependency cycle')
         futures[id_] = None
 
-        task['status'] = 'creating'
+        task['status']  = 'creating'
         task['pattern'] = encode_callable(task.get('pattern', 'generic'))
-        task['func'] = encode_callable(task.get('func'))
-        task['args'] = tuple(task.get('args') or ())
-        task['kwargs'] = dict(task.get('kwargs') or {})
+        task['func']    = encode_callable(task.get('func'))
+        task['args']    = tuple(task.get('args') or ())
+        task['kwargs']  = dict(task.get('kwargs') or {})
 
-        task.setdefault('cwd', os.getcwd())
-        task.setdefault('user'    , parent.get('user', _default_user.pw_name))
-        task.setdefault('group'   , parent.get('group', _default_group.gr_name))
-        task.setdefault('priority', parent.get('priority', 1000))
+        task.setdefault('cwd'     , str(parent.get('cwd', os.getcwd())))
+        task.setdefault('user'    , str(parent.get('user', _default_user.pw_name)))
+        task.setdefault('group'   , str(parent.get('group', _default_group.gr_name)))
+        task.setdefault('priority', int(parent.get('priority', 1000)))
 
         task['dependencies'] = [f.id for f in self._submit_dependencies(task, futures)]
         

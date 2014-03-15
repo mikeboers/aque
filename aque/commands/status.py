@@ -35,14 +35,13 @@ def status(args):
             arg_specs.append(repr(arg))
         for k, v in sorted((task.get('kwargs') or {}).iteritems()):
             arg_specs.append("%s=%r" % (k, v))
+        
         func = task.get('func')
-        if func:
-            func_name = '%s:%s' % (
-                getattr(func, '__module__', 'unknown'),
-                getattr(func, '__name__', str(func)),
-            )
-        else:
-            func_name = ''
+        try:
+            func_name = '%s:%s' % (func.__module__, func.__name__)
+        except AttributeError:
+            func_name = str(func or '')
+
         func_spec = '%s(%s)' % (func_name, ', '.join(arg_specs))
 
         parts = [

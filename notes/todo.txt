@@ -59,8 +59,8 @@
 
 - workers should respond to priority hints:
     - e.g. hints={'paths': [...], 'duration': 100}
-    - 'paths' is a sequence of paths that may have IO
-    - 'duration' is a float relative to other durations of the same priority,
+    - 'io_hints' is a sequence of paths that may have IO
+    - 'rel_duration' is a float relative to other durations of the same priority,
        and we prioritize longer processes of the same priority
 
 - workers should actually capture tasks
