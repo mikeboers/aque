@@ -80,7 +80,8 @@ class PostgresBroker(Broker):
                 func BYTEA,
                 args BYTEA,
                 kwargs BYTEA,
-                result BYTEA
+                result BYTEA,
+                extra BYTEA
             )''')
 
     def _inspect_schema(self):
@@ -142,7 +143,9 @@ class PostgresBroker(Broker):
         return utils.decode_if_possible(x)
 
     def _decode_task(self, row):
-        return dict((name, self._decode(x)) for (name, type_), x in zip(self._task_fields, row))
+        task = dict((name, self._decode(x)) for (name, type_), x in zip(self._task_fields, row))
+        task.update(task.pop('extra', None) or {})
+        return task
 
     def update(self, tid, data):
 
@@ -160,7 +163,8 @@ class PostgresBroker(Broker):
                 params.append(value)
 
         if data:
-            raise ValueError('unexpected keys: %s' % ', '.join(sorted(data)))
+            fields.append('extra')
+            params.append(self._encode(data))
 
         query = 'UPDATE tasks SET %s WHERE id = %%s' % ', '.join('"%s" = %%s' % name for name in fields)
         params.append(tid)

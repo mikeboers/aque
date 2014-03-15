@@ -1,10 +1,25 @@
 - aque xargs only needs to support -P (for parallelism) and -L (for lines)
 
-- test the new command line Aque interface
-    - make the main func take args so that we can call it within the same process
+  - "-P" should set the CPU reservation to "/<value>" (or similar) to indicate
+    that we want to reserve a fraction of the total. Should do it this way
+    instead of on the submitter because the submitter may not have a matching
+    number of processors.
 
-- task['stdin'] for general stdin remapping?
-- task['kwargs']['stdin'] = 'something' for shell pattern
+- add stdin, stdout, stderr, but should I also have stdin_value,
+  somehow encode that into the same field, or just don't have that capability?
+
+- Document that I should have the task be relatively flat, and keep the
+  pickled things as seperate from each other as possible. We will build
+  more flexibility in as required by making the pattern into a class and
+  having a bunch of hooks on it for various things.
+
+  Keeping the pickled things seperate allows us to use the least invasive
+  pickling that is possible, and keep depickling errors as isolated as possible.
+
+  At most I will consider having an "extra" field which is everything left
+  over that gets pickled.
+
+- `aque status --watch` for top-like output
 
 - enumerate all of the states:
     - creating
@@ -20,7 +35,15 @@
         COMPLETE_STATES
 
 - shell patterns should automatically add IO hints for any arguments that appear to be paths
-    - just pick anything that starts with a slash and which partially exists
+    - add the longest subpath which exists (even just '/') to the set
+    - sum up the size of fully-specified files for a pseudo "duration"
+
+  SOLUTION: only allow functions/classes that can be resolved by name, and
+  encode them into our format first
+
+- task['interpreter'] should be able to set which interpreter we use
+  (which is why qbfutures has sandbox.the_corner to work in)
+    - need Broker.to_url to pass via AQUE_BROKER
 
 - aque-xargs should match as much of xargs as we need
 - aque-kill should kill a task
