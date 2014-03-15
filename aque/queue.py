@@ -8,6 +8,7 @@ from aque.brokers import get_broker
 from aque.exceptions import DependencyError
 from aque.futures import Future
 from aque.task import Task
+from aque.utils import encode_callable
 
 from redis import Redis
 
@@ -54,7 +55,12 @@ class Queue(object):
         futures[id_] = None
 
         task['status'] = 'creating'
-        task.setdefault('pattern', 'generic')
+        task['pattern'] = encode_callable(task.get('pattern', 'generic'))
+        task['func'] = encode_callable(task.get('func'))
+        task['args'] = tuple(task.get('args') or ())
+        task['kwargs'] = dict(task.get('kwargs') or {})
+
+        task.setdefault('cwd', os.getcwd())
         task.setdefault('user'    , parent.get('user', _default_user.pw_name))
         task.setdefault('group'   , parent.get('group', _default_group.gr_name))
         task.setdefault('priority', parent.get('priority', 1000))

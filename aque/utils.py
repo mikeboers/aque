@@ -2,10 +2,11 @@ from collections import Callable
 from cPickle import PickleError
 import cPickle as pickle
 import json
-import pkg_resources
 import os
-import threading
+import pkg_resources
 import select
+import threading
+import types
 
 
 def encode_if_required(value):
@@ -61,6 +62,17 @@ def decode_values_when_possible(input_):
     return dict((k, decode_if_possible(v)) for k, v in input_.iteritems())
 
 
+def encode_callable(input_):
+    if input_ is None:
+        return None
+    if isinstance(input_, basestring):
+        return input_
+    try:
+        return '%s:%s' % (input_.__module__, input_.__name__)
+    except AttributeError:
+        raise TypeError('not a simple callable: %r' % input_)
+
+
 def decode_callable(input_, entry_point_group=None):
 
     # 1. If it is callable, pass through.
@@ -76,7 +88,7 @@ def decode_callable(input_, entry_point_group=None):
     # 3. Try to parse it as "<module_list>:<attr_list>"
     try:
         module_name, attr_list = input_.split(':')
-        module = __import__(module_name, from_list=['.'])
+        module = __import__(module_name, fromlist=['.'])
         func = module
         for attr_name in attr_list.split('.'):
             func = getattr(func, attr_name)

@@ -37,7 +37,10 @@ def status(args):
             arg_specs.append("%s=%r" % (k, v))
         func = task.get('func')
         if func:
-            func_name = '%s.%s' % (func.__module__, func.__name__)
+            func_name = '%s:%s' % (
+                getattr(func, '__module__', 'unknown'),
+                getattr(func, '__name__', str(func)),
+            )
         else:
             func_name = ''
         func_spec = '%s(%s)' % (func_name, ', '.join(arg_specs))
