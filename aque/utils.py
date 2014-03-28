@@ -1,13 +1,16 @@
+from __future__ import division
+
 from collections import Callable
 from cPickle import PickleError
 import cPickle as pickle
 import json
+import logging
 import os
 import pkg_resources
+import re
 import select
 import threading
 import types
-import logging
 
 log = logging.getLogger(__name__)
 
@@ -141,4 +144,21 @@ class WaitableEvent(object):
     def __del__(self):
         os.close(self._read_fd)
         os.close(self._write_fd)
+
+
+SI_PREFIXES = ('', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y')
+def format_bytes(bytes):
+    for prefix in SI_PREFIXES:
+        if bytes < 1024:
+            break
+        bytes //= 1024
+    else:
+        bytes *= 1024
+    return '%d%sB' % (bytes, prefix)
+
+
+def parse_bytes(formatted):
+    m = re.match(r'^(\d*\.?\d*)([kMGTPEZY]?)B?$', formatted)
+    if m:
+        return float(m.group(1)) * 1024 ** SI_PREFIXES.index(m.group(2))
 

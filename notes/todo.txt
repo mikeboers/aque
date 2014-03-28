@@ -4,6 +4,9 @@
     - 'cpu' is number of cpus the task would like, defaults to 1
     - 'mem' is the amount of ram required, defaults to 0
 
+    - worker._running is a list of RunningJob(s)
+    - worker._available_resources() -> dict of total resources - job.resources for job in worker._running
+
 - aque xargs only needs to support -P (for parallelism) and -L (for lines)
 
   - "-P" should set the CPU reservation to "/<value>" (or similar) to indicate
