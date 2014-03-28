@@ -5,7 +5,7 @@ Patterns
 
 A task pattern is a callable which is responsible for interpreting a task definition and managing its execution. It is often enough to provide your own callable to an existing pattern instead of making your own patterns.
 
-The pattern accepts two positional arguments: a :class:`.Broker` to report results to, and a dict :ref:`task prototype <tasks>`. The pattern should call :meth:`.Broker.mark_as_success` when the task completes successfully or :meth:`.Broker.mark_as_error` when an error occurs.
+The pattern is called with two positional arguments: a :class:`.Broker` to report results to, and a dict :ref:`task prototype <tasks>`. The pattern should call :meth:`.Broker.mark_as_success` when the task completes successfully. Any exceptions raised by the pattern will be reported as errors.
 
 
 The ``generic`` Pattern

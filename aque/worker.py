@@ -197,5 +197,5 @@ class Worker(object):
         # Make sure that the pattern actually did something.
         # XXX: Surely I can just fetch one field...
         if self.broker.fetch(task['id'])['status'] == 'pending':
-            self.broker.mark_as_error(task['id'], TaskIncomplete('the pattern did not complete'))
+            self.broker.mark_as_error(task['id'], PatternIncompleteError('the pattern did not complete'))
 
