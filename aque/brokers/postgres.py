@@ -3,6 +3,8 @@ import json
 import threading
 import select
 import logging
+import time
+import datetime
 from Queue import Queue, Empty
 
 import psycopg2.pool
@@ -34,6 +36,11 @@ class PostgresBroker(Broker):
         self._notify_stopper = utils.WaitableEvent()
         self._notify_lock = threading.Lock()
         self._notify_thread = None
+
+        self._heartbeat_stopper = threading.Event()
+        self._heartbeat_lock = threading.Lock()
+        self._heartbeat_thread = None
+        self._captured_tids = []
 
     def _open_pool(self):
         return pg.pool.ThreadedConnectionPool(0, 4, **self._kwargs)
@@ -77,6 +84,7 @@ class PostgresBroker(Broker):
                 name TEXT,
                 dependencies INTEGER[],
                 status TEXT NOT NULL DEFAULT 'creating',
+                last_active TIMESTAMP,
                 priority INTEGER NOT NULL DEFAULT 1000,
                 pattern BYTEA,
                 func BYTEA,
@@ -257,4 +265,45 @@ class PostgresBroker(Broker):
             with self._cursor() as cur:
                 cur.execute('SELECT result FROM tasks WHERE id = %s', [payload['id']])
                 future.set_exception(self._decode(next(cur)[0]))
+
+    def capture(self, tid):
+
+        with self._cursor() as cur:
+            cur.execute('SELECT last_active FROM tasks WHERE id = %s FOR UPDATE', [tid])
+            last_active = next(cur, (None, ))[0]
+
+            cur.execute('SELECT localtimestamp')
+            current_time = next(cur)[0]
+
+            if not last_active or current_time - last_active > datetime.timedelta(seconds=30):
+                cur.execute('UPDATE tasks SET last_active = %s WHERE id = %s', [current_time, tid])
+            else:
+                return
+
+        with self._heartbeat_lock:
+            self._captured_tids.append(tid)
+            if not self._heartbeat_thread:
+                self._heartbeat_stopper.clear()
+                self._heartbeat_thread = threading.Thread(target=self._heartbeat)
+                self._heartbeat_thread.daemon = True
+                self._heartbeat_thread.start()
+
+        return True
+
+    def release(self, tid):
+        with self._cursor() as cur:
+            cur.execute('UPDATE tasks SET last_active = NULL WHERE id = %s', [tid])
+        with self._heartbeat_lock:
+            self._captured_tids.remove(tid)
+            if not self._captured_tids:
+                self._heartbeat_stopper.set()
+                self._heartbeat_thread = None
+
+    def _heartbeat(self):
+        while not self._heartbeat_stopper.wait(15):
+            with self._heartbeat_lock:
+                with self._cursor() as cur:
+                    cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = ANY(%s)', [list(self._captured_tids)])
+
+
 

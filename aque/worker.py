@@ -8,6 +8,7 @@ import multiprocessing
 import sys
 import os
 import logging
+import contextlib
 
 from aque.brokers import get_broker
 from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternIncompleteError, PatternMissingError
@@ -28,10 +29,10 @@ class Worker(object):
         self._stopper.set()
 
     def run_one(self):
-        task = self.capture_task()
-        if not task:
-            return False
-        self.execute(task)
+        with self.capture_task() as task:
+            if not task:
+                return False
+            self.execute(task)
         return True
 
     def run_to_end(self):
@@ -50,14 +51,16 @@ class Worker(object):
             except KeyboardInterrupt:
                 return
                 
-
+    @contextlib.contextmanager
     def capture_task(self):
         for task in self.iter_open_tasks():
-
-            # TODO: actually capture it
-            return task
-
-        return None
+            if self.broker.capture(task['id']):
+                try:
+                    yield task
+                finally:
+                    self.broker.release(task['id'])
+                    return
+        yield None
 
     def iter_open_tasks(self):
 

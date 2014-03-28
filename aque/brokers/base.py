@@ -87,6 +87,15 @@ class Broker(object):
     def delete(self, tid):
         """Delete the given task."""
     
+    # MID-LEVEL TASK API
+
+    def capture(self, tid):
+        """Capture the task, and keep a heartbeat running."""
+        return True
+
+    def release(self, tid):
+        """Release a task that we are done with."""
+
     # HIGH-LEVEL TASK API
 
     def get_future(self, tid):

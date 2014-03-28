@@ -1,5 +1,4 @@
 
-- actually capture tasks so that we can have multiple workers
 - workers should run more than one job at once
     - e.g. requirements={'cpu': 2, 'mem': '8MB'}
     - 'cpu' is number of cpus the task would like, defaults to 1
@@ -64,32 +63,6 @@
     - 'io_hints' is a sequence of paths that may have IO
     - 'rel_duration' is a float relative to other durations of the same priority,
        and we prioritize longer processes of the same priority
-
-- workers should actually capture tasks
-
-    worker table:
-        id
-        hostname
-        ip
-        last_active -> time of last heartbeat
-        
-    SQL schema should include:
-        captured_by -> worker.id
-        last_active -> time of last heartbeat
-
-    # This will also schedule a heartbeat.
-    # By default assume a 30s timeout.
-    if not broker.capture(tid):
-        continue
-
-    try:
-        xxx
-    finally:
-        broker.release(tid)
-
-    - broker will need to synchronize time with the server:
-        '''select CURRENT_TIME''' and calculate the offset
-
 
 - reconsider adding children to the graph. They could be exactly the same as
   dependencies, except that they inherit from their parent.

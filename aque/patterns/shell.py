@@ -1,3 +1,4 @@
+import os
 import logging
 import subprocess
 
@@ -23,6 +24,11 @@ def do_shell_task(broker, task):
     if stdin_content:
         kwargs['stdin'] = subprocess.PIPE
 
+    env = os.environ.copy()
+    env.update(kwargs.pop('env', {}))
+    env['AQUE_TID'] = str(task['id'])
+    kwargs['env'] = env
+    
     proc = subprocess.Popen(cmd, **kwargs)
     if stdin_content:
         proc.stdin.write(stdin_content)
