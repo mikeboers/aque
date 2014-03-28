@@ -5,7 +5,7 @@ import os
 import pwd
 
 from aque.brokers import get_broker
-from aque.exceptions import DependencyError
+from aque.exceptions import DependencyResolutionError
 from aque.futures import Future
 from aque.task import Task
 from aque.utils import encode_callable
@@ -51,7 +51,7 @@ class Queue(object):
             if future:
                 return future
             else:
-                raise DependencyError('dependency cycle')
+                raise DependencyResolutionError('dependency cycle')
         futures[id_] = None
 
         task['status']  = 'creating'

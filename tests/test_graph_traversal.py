@@ -50,7 +50,7 @@ class TestGraphTraversal(BrokerTestCase):
         a = {}
         b = {'dependencies': [a]}
         a['dependencies'] = [b]
-        self.assertRaises(DependencyError, execute, a)
+        self.assertRaises(DependencyResolutionError, execute, a)
 
     def test_looped_branches(self):
         a = {}
@@ -59,4 +59,4 @@ class TestGraphTraversal(BrokerTestCase):
         c['dependencies'] = [b]
         b['dependencies'] = [c]
         a['dependencies'] = [a, b]
-        self.assertRaises(DependencyError, execute, a)
+        self.assertRaises(DependencyResolutionError, execute, a)

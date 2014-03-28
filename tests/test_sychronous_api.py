@@ -1,3 +1,5 @@
+"""Some very basic tests of the synchonous API."""
+
 from . import *
 
 def ex_add(a, b):

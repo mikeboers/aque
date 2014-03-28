@@ -10,7 +10,7 @@ import os
 import logging
 
 from aque.brokers import get_broker
-from aque.exceptions import TaskIncomplete, PreconditionFailed, DependencyError
+from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternIncompleteError, PatternMissingError
 from aque.futures import Future
 from aque.utils import decode_callable, encode_if_required, decode_if_possible
 
@@ -82,13 +82,13 @@ class Worker(object):
                 if not dep:
                     log.warning('task %r is missing dependency %r' % (task['id'], dep_id))
                     self.broker.mark_as_error(task['id'],
-                        DependencyError('task %r does not exist' % dep_id),
+                        DependencyResolutionError('task %r does not exist' % dep_id),
                     )
                     break
                 if dep['status'] not in ('pending', 'success'):
                     log.info('task %r has failed dependency %r' % (task['id'], dep_id))
                     self.broker.mark_as_error(task['id'],
-                        PreconditionFailed('task %r has status %r' % (dep_id, dep['status']))
+                        DependencyFailedError('task %r has status %r' % (dep_id, dep['status']))
                     )
                     break
 
@@ -172,32 +172,27 @@ class Worker(object):
 
     def _execute(self, task):
         try:
+
             encoded_pattern = task.get('pattern', 'generic')
-            pattern_func = decode_callable(encoded_pattern, 'aque_patterns')
+            try:
+                pattern_func = decode_callable(encoded_pattern, 'aque_patterns')
+            except ValueError:
+                pattern_func = None
             if pattern_func is None:
-                raise TaskError('unknown pattern %r' % encoded_pattern)
+                raise PatternMissingError('cannot decode pattern from %r' % encoded_pattern)
+
             pattern_func(self.broker, task)
+
         except KeyboardInterrupt:
             raise
+        
         except Exception as e:
             self.broker.mark_as_error(task['id'], e)
-            traceback.print_exc()
+            return
+            # traceback.print_exc()
 
+        # Make sure that the pattern actually did something.
+        # XXX: Surely I can just fetch one field...
+        if self.broker.fetch(task['id'])['status'] == 'pending':
+            self.broker.mark_as_error(task['id'], TaskIncomplete('the pattern did not complete'))
 
-
-
-if __name__ == '__main__':
-
-    import argparse
-
-    from redis import Redis
-    from aque.brokers.redis import RedisBroker
-    
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('queue', default='aque')
-    args = parser.parse_args()
-
-    broker = RedisBroker(args.queue, Redis())
-    worker = Worker(broker)
-    worker.run_forever()

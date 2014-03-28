@@ -33,7 +33,7 @@ def decode_if_possible(encoded):
 
     try:
         return pickle.loads(encoded)
-    except (TypeError, PickleError):
+    except (AttributeError, ImportError, TypeError, PickleError):
         pass
 
     try:

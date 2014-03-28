@@ -1,4 +1,4 @@
-from aque.exceptions import DependencyError, TaskIncomplete, TaskError
+from aque.exceptions import DependencyResolutionError, DependencyFailedError
 from aque.futures import Future
 from aque.queue import Queue
 from aque.brokers.memory import MemoryBroker

@@ -14,7 +14,7 @@ import psycopg2 as pg2
 
 from aque import Queue, Future, execute
 from aque.brokers import get_broker
-from aque.exceptions import DependencyError, TaskIncomplete, TaskError, PreconditionFailed
+from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternIncompleteError, PatternMissingError
 from aque.worker import Worker
 from aque.commands.main import main
 
@@ -62,6 +62,7 @@ class BrokerTestCase(TestCase):
             self.broker.clear()
         self.queue = Queue(self.broker)
         self.worker = Worker(self.broker)
+        self.worker.run_to_end()
 
     def tearDown(self):
         self.broker.close()

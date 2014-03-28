@@ -1,4 +1,6 @@
-from aque.brokers.memory import MemoryBroker
+"""Unit tests of the worker utilities, not integration of the worker with
+the rest of the system."""
+
 from . import *
 
 

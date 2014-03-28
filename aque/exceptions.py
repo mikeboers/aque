@@ -1,5 +1,5 @@
 
-class DependencyError(RuntimeError):
+class DependencyResolutionError(RuntimeError):
     """Raised when task dependencies cannot be resolved.
 
     This may be raised by :meth:`.Queue.submit`
@@ -7,12 +7,13 @@ class DependencyError(RuntimeError):
     
     """
 
-class TaskIncomplete(RuntimeError):
+class PatternIncompleteError(RuntimeError):
     """Raised by :meth:`.Task.result` when the :ref:`pattern <patterns>` running
     the task did not complete."""
 
-class TaskError(RuntimeError):
-    """Raised by :meth:`.Task.result` when the task errored without raiding an exception."""
+class PatternMissingError(RuntimeError):
+    """Raised by :meth:`.Task.result` when the :ref:`pattern <patterns>` running
+    the task did not complete."""
 
-class PreconditionFailed(RuntimeError):
+class DependencyFailedError(RuntimeError):
     """Raises by :meth:`.Task.result` when a dependency of the task failed."""
