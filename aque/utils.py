@@ -7,6 +7,9 @@ import pkg_resources
 import select
 import threading
 import types
+import logging
+
+log = logging.getLogger(__name__)
 
 
 def encode_if_required(value):
@@ -31,17 +34,23 @@ def decode_if_possible(encoded):
 
     """
 
+    if not isinstance(encoded, basestring):
+        return encoded
+
     try:
         return pickle.loads(encoded)
-    except (AttributeError, ImportError, TypeError, PickleError):
+    except PickleError:
         pass
+    except (AttributeError, ImportError, TypeError):
+        log.warning('pickle is no longer valid', exc_info=True)
 
     try:
         return json.loads(encoded)
-    except (TypeError, ValueError):
+    except ValueError:
         pass
 
     return encoded
+
 
 def encode_values_when_required(input_):
     """JSON encode the values of a dictionary when they are not strings.
@@ -51,6 +60,7 @@ def encode_values_when_required(input_):
     """
 
     return dict((k, encode_if_required(v)) for k, v in input_.iteritems())
+
 
 def decode_values_when_possible(input_):
     """JSON decode the values of a dictionary when they are valid JSON.
