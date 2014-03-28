@@ -7,11 +7,15 @@ import select
 import multiprocessing
 import sys
 import os
+import logging
 
 from aque.brokers import get_broker
-from aque.exceptions import TaskIncomplete
+from aque.exceptions import TaskIncomplete, PreconditionFailed, DependencyError
 from aque.futures import Future
 from aque.utils import decode_callable, encode_if_required, decode_if_possible
+
+
+log = logging.getLogger(__name__)
 
 
 class Worker(object):
@@ -72,9 +76,24 @@ class Worker(object):
             # TODO: make sure someone isn't working on it already.
 
             dep_ids = task.get('dependencies')
-            deps = self.broker.fetch_many(dep_ids).values()
-            if any(dep['status'] != 'success' for dep in deps):
-                tasks.extend(deps)
+            deps = self.broker.fetch_many(dep_ids)
+            for dep_id in dep_ids:
+                dep = deps.get(dep_id)
+                if not dep:
+                    log.warning('task %r is missing dependency %r' % (task['id'], dep_id))
+                    self.broker.mark_as_error(task['id'],
+                        DependencyError('task %r does not exist' % dep_id),
+                    )
+                    break
+                if dep['status'] not in ('pending', 'success'):
+                    log.info('task %r has failed dependency %r' % (task['id'], dep_id))
+                    self.broker.mark_as_error(task['id'],
+                        PreconditionFailed('task %r has status %r' % (dep_id, dep['status']))
+                    )
+                    break
+
+            if any(dep['status'] != 'success' for dep in deps.itervalues()):
+                tasks.extend(deps.itervalues())
                 continue
 
             if task['status'] == 'pending':

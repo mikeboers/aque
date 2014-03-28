@@ -7,3 +7,6 @@ class TaskIncomplete(RuntimeError):
 
 class TaskError(RuntimeError):
     """Raised by :meth:`Task.result` when the task errored without raiding an exception."""
+
+class PreconditionFailed(RuntimeError):
+    pass

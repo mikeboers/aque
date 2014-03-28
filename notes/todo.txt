@@ -1,3 +1,11 @@
+- missing dependencies result in TaskDependencyError
+
+- actually capture tasks so that we can have multiple workers
+- workers should run more than one job at once
+    - e.g. requirements={'cpu': 2, 'mem': '8MB'}
+    - 'cpu' is number of cpus the task would like, defaults to 1
+    - 'mem' is the amount of ram required, defaults to 0
+
 - aque xargs only needs to support -P (for parallelism) and -L (for lines)
 
   - "-P" should set the CPU reservation to "/<value>" (or similar) to indicate
@@ -51,11 +59,6 @@
 
 - send "task_status" -> "running" when a task starts executing
     or a task_heartbeat with the ID
-
-- workers should run more than one job at once
-    - e.g. requirements={'cpu': 2, 'mem': '8MB'}
-    - 'cpu' is number of cpus the task would like, defaults to 1
-    - 'mem' is the amount of ram required, defaults to 0
 
 - workers should respond to priority hints:
     - e.g. hints={'paths': [...], 'duration': 100}

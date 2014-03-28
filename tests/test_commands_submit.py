@@ -10,10 +10,10 @@ class TestSubmitCommand(BrokerTestCase):
         tid = int(self_check_output(['submit', 'echo', msg]).strip())
 
         full_human_status = self_check_output(['status'])
-        self.assertTrue(re.search(r'\b%d\s+pending' % tid, full_human_status))
+        self.assertSearch(r'\b%d\s+pending' % tid, full_human_status)
 
         one_human_status = self_check_output(['status', str(tid)])
-        self.assertTrue(re.search(r'\b%d\s+pending' % tid, one_human_status))
+        self.assertSearch(r'\b%d\s+pending' % tid, one_human_status)
 
         with capture_output() as (out, _):
             self_call(['status', '--csv', 'id,status'])

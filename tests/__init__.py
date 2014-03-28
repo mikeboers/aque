@@ -1,7 +1,7 @@
 from cStringIO import StringIO
 from pprint import pprint
 from subprocess import CalledProcessError
-from unittest import TestCase
+from unittest import TestCase as BaseTestCase
 import contextlib
 import os
 import re
@@ -14,7 +14,7 @@ import psycopg2 as pg2
 
 from aque import Queue, Future, execute
 from aque.brokers import get_broker
-from aque.exceptions import DependencyError, TaskIncomplete, TaskError
+from aque.exceptions import DependencyError, TaskIncomplete, TaskError, PreconditionFailed
 from aque.worker import Worker
 from aque.commands.main import main
 
@@ -33,15 +33,24 @@ def capture_output(out=True, err=False):
         err.seek(0)
     sys.stdout, sys.stderr = real_out, real_err
 
+
 def self_call(args):
     res = main(args)
     if res:
         raise CalledProcessError(res)
 
+
 def self_check_output(args):
     with capture_output() as (out, _):
         main(args)
     return out.getvalue()
+
+
+class TestCase(BaseTestCase):
+
+    def assertSearch(self, pattern, content):
+        if not re.search(pattern, content):
+            self.fail('\'%s\' does not match %r' % (pattern, content))
 
 
 class BrokerTestCase(TestCase):
