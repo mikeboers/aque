@@ -12,8 +12,10 @@ Contents:
    :maxdepth: 2
 
    tasks
+   queues
    patterns
    brokers
+   exceptions
 
 
 

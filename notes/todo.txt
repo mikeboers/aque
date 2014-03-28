@@ -1,4 +1,3 @@
-- missing dependencies result in TaskDependencyError
 
 - actually capture tasks so that we can have multiple workers
 - workers should run more than one job at once

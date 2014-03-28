@@ -14,6 +14,10 @@ from .base import Broker
 
 
 class PostgresBroker(Broker):
+    """A :class:`.Broker` which uses Postgresql_ as a data store and event dispatcher.
+
+    .. _Postgresql: http://www.postgresql.org/
+    """
 
     @classmethod
     def from_url(cls, parts):
