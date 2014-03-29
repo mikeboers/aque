@@ -1,12 +1,28 @@
 
+- run as actual user
+
 - deploy onto main servers (via AQUE_BROKER="$(ficonfig get aque_broker)")
+
 - `aque worker --reload` uses metatools reloader (or change detection and
   a restart via os.exec-ing back to itself)
+
+- `killall -HUP aque-worker` -> it execs to itself
+  - can I set it's name to aque-worker after it has started, or should I
+    actually make various aque-* commands?
 
 - need to get much more efficient when looking at thousands of tasks
   - if it is a requirement of every broker that it is able to signal when
     there is a status change in a process, then we are able to have the worker
     only listen to that for updates (after fetching the main list, of course)
+  - broker.iter_tasks(where={'status': 'pending'}, fields=['id', 'dependencies'])
+  - worker keeps a cache of tasks that it has requested, so that it only needs
+    to hit the broker for those that it hasn't already seen
+
+- `aque kill <tid>` -> sends an event that the worker hears, and then kills
+  the subprocess
+
+- broker should have a standard event listening interface. Take a look at the
+  blinker API and see if we should replicate that with Postgres.
 
 - aque xargs only needs to support -P (for parallelism) and -L (for lines)
 
@@ -18,7 +34,7 @@
 - add stdin, stdout, stderr, but should I also have stdin_value,
   somehow encode that into the same field, or just don't have that capability?
 
-- Document that I should have the task be relatively flat, and keep the
+- Document (in hacking notes) that I should have the task be relatively flat, and keep the
   pickled things as seperate from each other as possible. We will build
   more flexibility in as required by making the pattern into a class and
   having a bunch of hooks on it for various things.
