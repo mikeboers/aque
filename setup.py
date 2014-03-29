@@ -16,7 +16,7 @@ setup(
     install_requires=[
         'futures',
         'psutil',
-        'redis',
+        'psycopg2',
     ],
     
     entry_points={
