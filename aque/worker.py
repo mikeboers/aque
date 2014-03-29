@@ -114,9 +114,8 @@ class Worker(object):
 
                 if self._finished_one.wait(1):
                     self._finished_one.clear()
-                    print 'one finished!'
                 else:
-                    print 'looking for new tasks...'
+                    print 'waiting for new tasks...'
 
 
     def _run_in_thread(self, task):
@@ -185,11 +184,6 @@ class Worker(object):
             out_r, out_w = os.pipe()
             err_r, err_w = os.pipe()
 
-            # Lets watch them for logging.
-            fd_thread = threading.Thread(target=self._watch_fds, args=(out_r, err_r))
-            fd_thread.daemon = True
-            fd_thread.start()
-
             # Start the actuall subprocess.
             proc = multiprocessing.Process(target=self._forked_execute, args=(
                 task, out_w, err_w,
@@ -201,7 +195,7 @@ class Worker(object):
             os.close(err_w)
 
             # Wait for it to finish.
-            # TODO: add this to a pool and manage resources.
+            self._watch_fds(out_r, err_r)
             proc.join()
 
         else:
