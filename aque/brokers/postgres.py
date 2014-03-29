@@ -101,7 +101,7 @@ class PostgresBroker(Broker):
     def _inspect_schema(self):
         with self._cursor() as cur:
             # Determine what rows we actually have.
-            cur.execute('''SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tasks' ''')
+            cur.execute('''SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tasks' ORDER BY ordinal_position''')
             self._task_fields = tuple(cur)
 
     def destroy_schema(self):
@@ -158,7 +158,7 @@ class PostgresBroker(Broker):
 
     def _decode_task(self, row):
         task = dict((name, self._decode(x)) for (name, type_), x in zip(self._task_fields, row))
-        task.update(task.pop('extra', None) or {})
+	task.update(task.pop('extra', None) or {})
         return task
 
     def update(self, tid, data):
