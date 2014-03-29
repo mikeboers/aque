@@ -1,5 +1,12 @@
 
+- deploy onto main servers (via AQUE_BROKER="$(ficonfig get aque_broker)")
+- `aque worker --reload` uses metatools reloader (or change detection and
+  a restart via os.exec-ing back to itself)
+
 - need to get much more efficient when looking at thousands of tasks
+  - if it is a requirement of every broker that it is able to signal when
+    there is a status change in a process, then we are able to have the worker
+    only listen to that for updates (after fetching the main list, of course)
 
 - aque xargs only needs to support -P (for parallelism) and -L (for lines)
 

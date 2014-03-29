@@ -1,43 +1,5 @@
-How to prioritize
-=================
-
-When we start, subscribe to the "$base@$db:status_changes" queue, then pull all existing pending tasks.
-
-As new tasks are posted (or on start), calculate their invariant scores, and hold them. Consider setting these scores into "$base:task:$jid:scores" so that others can see
-
-Whenever there is a new task, or one finishes, or a pending one will timeout, or HUP, iterate from top to bottom of local list and take the first one that we satisfy the requirements of. This task capture must be atomic.
-
-Each task has a timeout (default to 300 seconds) that allows others to take it over in case it failed. The worker can ping redis periodically (about every half of that time) to assert that the task is still alive.
-
-Priority is per-level only. E.g. astronomical priorities in a sub-task do not affect the scheduling of their parent.
-
-
-Atomic Captures
-===============
-
-Idea 1: "$base:task:$jid:capture_id" is an int of capture attempts. You INCR this then compare to the value in "$base:task:$jid"."capture_id". If the new ID is only one more than the one in the hash, then you won it. You have only a few seconds to update the task and set a "last_active" time.
-
-Idea 2: "$base:task:$jid:lock" is set to when it was locked by its worker. This is set via "SET <key> <worker>:<time> NX EX <timeout>". Unlock with a basic lua script. See: http://redis.io/commands/set
-
-
-Timeouts
-========
-
-The times of the two servers must be accurate. Call redis.time and use that to figure out an offet to our own time so that they are roughly in sync.
-
-
-Curator & Web UI
-================
-
-A curator process removes all logs from redis, and stores tasks once they are done.
-
-"$base:curator" is a hash of info for contacting the curator
-    "host" and "port"
-
-
-Logs are published to "$base:curator_channel", and pushed to "$base:curator_queue" if there wasn't anyone listening to it.
-
-One captures all logs, and stores details of complete tasks once they are done.
+logs and resource usage
+-----------------------
 
 - log data chunks are appended to "$base:task:$jid:output" and published to a queue
 - chunk format: "<timestamp> <channel> <data>"
@@ -55,39 +17,6 @@ One captures all logs, and stores details of complete tasks once they are done.
     /task/$jid/logs
 
 
-Heirarchy
-=========
-
-Stuff like "requirements" are inherited by children if not specified. Then one can make a set of ranges of subtasks and not have to specify that stuff a bajillion times. Perhaps an "inherit=False" could stop that.
-
-
-Name
-====
-
-- rediqueue
-- rediq
-- pyq "pike"
-- quey "queue-y"
-- AQuey (ah-kway)
-- AQue
-- YaQ (Yet Another Queue)
-- Yak (Yet Another Kueue)
-
-Statuses
-========
-
-"pending" -> task has not run yet
-
-"paused" -> task had not run, and should not run
-
-"success" -> task has run and results may be in "result"
-
-"error" -> task errored and some of the following may be set:
-    - "error" -> a message
-    - "error_type" -> a class name
-    - "exception" -> an exception
-
-
 API
 ===
 
@@ -95,59 +24,8 @@ from aque import current_task
 current_task() -> proxies to the current task via threading.local()
 
 
-Testing
-=======
-
-For now use the synchonous API. Later figure out how to do it on Redis.
-
-
 Unsorted
 ========
-
-
-- once a Task has been frozen, do not allow changes to it from the user's side
-
-    - everything which gets stored must have a task property to serialize it
-    - this can deny changes one task.is_frozen
-
-- task.args():
-    - self['args'] == 'children' assembles args from results of children
-    - self['args'] == 'dependencies' is similar
-
-- task.__getitem__ could eval 'attr.func' and 'attr.expr' before looking for 'attr'
-
-- task.lookup(name, eval=True, walk=True)
-    - lookup a name in this task, then the parent, all the way to the top
-
-- Task.cast(input_)
-
-- task.backrefs = set()
-    - set of Tasks which list this as a child or dependency
-    - could be built by .freeze(), or similar
-
-- Task class abstracts away all of the storage:
-
-    Task._field_types = dict(
-        func='callable',
-        etc.
-    )
-
-    task[name] -> underlying dict-style store
-    
-    # Sync and async API.
-    task.complete(result)
-    task.error(message or exception)
-
-    task.children() -> list of Tasks
-    task.dependencies() -> list of Tasks
-
-    # For async patterns only.
-    task.progress(count, max=None, message=None)
-    task.ping(): this task is still running; don't reschedule it
-
-    # For async schedulers.
-    task.cancel()
-    task.retry(recursive=False)
 
 - `aque` command-line to queue shell tasks
     - output specifies dependency for piping, e.g.:
@@ -155,41 +33,16 @@ Unsorted
         b=$(aque --pipe-from "$a" md5)
         aque --wait --results "$b"
 
-- "groups" or "child templates" allow to have tasks inherit from a template (to ease specification of hundreds of similar tasks)
-    TaskTemplate() -> does not actually run, and modifies the returned children.
-
 - tools to look at with significant startup overhead:
     - REDline
     - ARC_CMD (Arri debayering)
     - one of Jon's image processing scripts, e.g.:
         ~/dev/fidata/hk_dpx_jsrenderpull.py dpxrender_VFX_PULL_030_090913.js | xargs -L24 -P30 ~/dev/fidata/scaler/hk_render_jsdpx.py -j dpxrender_VFX_PULL_030_090913.js
 
-- Different ways of specifying children:
-    - a list of child IDs
-    - "range": there is a "range_spec" key on the task
-
 - Python and bash APIs for fetching info about the current task. Communicated via environment variables.
 
     current_task().top_level.description
     current_task().set_status('suspend')
-
-- tasks/subtasks/subsubtasks are traversed in a depth-first manner, and an upper tier may only be captured by a worker if all of the children are complete
-
-- have a concurrent.futures interface as well
-
-- priority should have several weights: availible memory and processors (drop to zero if the resources don't exist or starting this task would pull us down past zero), if inputs or outputs lie on the direct RAID or across the NFS (weighted inversely by speed?)
-
-    - priority calculators could be discovered via entrypoints. could expose lua fragments that
-      are concatted together
-    
-    - when looking for new work, get the whole pending list and calculate the
-      scores for whichever ones are NOT in the worker
-
-- subtasks specified directly, or via ranges
-
-- this would be tons easier if we had the "scan" command
-
-- "$base:task:$jid:children" vs "$base:task.children:$jid"
 
 - reporting by timecodes and durations, instead of individual tasks. Then we can do an output status per sequence.
 - ARC_CMD and others may stuff some metadata into the headers such as how many frames were processed in that sequence
@@ -200,65 +53,6 @@ Unsorted
 
 - hook onto Python logging
 
-- the worker will need to run as root
-
-- `default` for json.dumps to look for __aque_reduce__ for custom serializations
-    - eventually returns '!!aque/reduced {}'.format(json.dumps(obj.__aque_reduce__))
-    - or returns {'!!': type, ...} or
-    - these are yaml-style tags, and look somewhat like shebangs
-
-- task.as_dict()
-- Task.from_dict()
-
-- celery-style decorators:
-
-    @task
-    def my_task(x):
-        return str(x)
-
-    future = my_task(123)
-
-    @task
-    def my_second_task(f):
-        return str(f.result())
-
-    f2 = my_second_task(future) # waits on the first as a dependency!
-
-    @task
-    def my_third_task():
-
-        f = my_task(123)
-        r = f.result() # pauses this greenlet to depend upon the other result!
-
 - Task.yield_() could allow the controller to pause its greenlet in case a higher priority job came in.
 
-- Task should not have result/cancel/etc. methods; those should be on a Future (there may need to be a LocalFuture vs a "real" Future).
-    
-    The `Task` is for defining tasks, and for the worker to drive them. It is NOT used to interact with results.
-
-    Task.run() immediately returns results.
-
-    Queue.submit(task) returns a Future, where Future.task is a copy of the original Task. Task objects are never updated, and should just be assumed to be out of date.
-
-    The `Future` is how you interact with a copy of a specific task. It doesn't actually know anything about the task itself, except it can grab results and errors, and control execution.
-
-
-- broker.update(task, kwargs) sets the data locally, sets it in Redis, and does a publish to notify others.
-
-- task._changed_properties = set() of changed property values
-- task.commit(all=False) would push out all of the changes
-
-- workers can have their individual methods tested:
-    w = Worker(self.queue)
-    for t in w.iter_open_tasks():
-        # make sure they are in the right order
-
-- should all of the Redis stuff be moved into a Broker class, ala Celery?
-    - Broker.get_top_level()
-    - Broker.get(task_id, fields=[])
-    - Broker.store(task, fields=[])
-
-- should we be trying much less hard to make our data mash into Redis nicely? It just doesn't seem like it matters all that much.
-
-- How much can this depend on Redis? It could be "simpler" if it was highly coupled, but it could also make more sense if there was a broker that was reponsible for all of this.
 
