@@ -24,7 +24,7 @@ class PostgresBroker(Broker):
 
     @classmethod
     def from_url(cls, parts):
-        return cls(database=parts.path.strip('/').lower())
+        return cls(host=parts.netloc, database=parts.path.strip('/').lower())
 
     def __init__(self, **kwargs):
         super(PostgresBroker, self).__init__()
