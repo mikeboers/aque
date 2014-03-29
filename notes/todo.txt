@@ -1,5 +1,5 @@
 
-- run as actual user
+- run as actual user (if root)
 
 - deploy onto main servers (via AQUE_BROKER="$(ficonfig get aque_broker)")
 
