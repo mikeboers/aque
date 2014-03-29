@@ -171,6 +171,7 @@ class Worker(object):
                     fh.write(out)
                     fh.flush()
                 else:
+                    os.close(fd)
                     fds.remove(fd)
 
     def _execute(self, task):
