@@ -4,8 +4,10 @@
     - 'cpu' is number of cpus the task would like, defaults to 1
     - 'mem' is the amount of ram required, defaults to 0
 
-    - worker._running is a list of RunningJob(s)
+    - worker._running_tasks is a list of tasks
     - worker._available_resources() -> dict of total resources - job.resources for job in worker._running
+    - worker._task_finished = threading.Event() -> set whenever one finishes,
+      and cleared before starting another
 
 - aque xargs only needs to support -P (for parallelism) and -L (for lines)
 

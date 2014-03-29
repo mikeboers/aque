@@ -7,6 +7,7 @@ import time
 import datetime
 from Queue import Queue, Empty
 
+import psutil
 import psycopg2.pool
 import psycopg2.extras
 import psycopg2 as pg
@@ -43,7 +44,7 @@ class PostgresBroker(Broker):
         self._captured_tids = []
 
     def _open_pool(self):
-        return pg.pool.ThreadedConnectionPool(0, 4, **self._kwargs)
+        return pg.pool.ThreadedConnectionPool(0, 4 * psutil.cpu_count(), **self._kwargs)
 
     def did_fork(self):
         self._pool = self._open_pool()
@@ -86,6 +87,7 @@ class PostgresBroker(Broker):
                 status TEXT NOT NULL DEFAULT 'creating',
                 last_active TIMESTAMP,
                 priority INTEGER NOT NULL DEFAULT 1000,
+                requirements BYTEA,
                 pattern BYTEA,
                 func BYTEA,
                 args BYTEA,

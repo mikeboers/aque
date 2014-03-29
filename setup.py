@@ -14,8 +14,9 @@ setup(
     license='BSD-3',
 
     install_requires=[
-        'redis',
         'futures',
+        'psutil',
+        'redis',
     ],
     
     entry_points={

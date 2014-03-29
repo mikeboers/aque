@@ -1,66 +1,128 @@
+import contextlib
 import itertools
+import logging
+import multiprocessing
+import os
 import pprint
+import select
+import sys
+import threading
 import time
 import traceback
-import threading
-import select
-import multiprocessing
-import sys
-import os
-import logging
-import contextlib
+
+import psutil
 
 from aque.brokers import get_broker
 from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternIncompleteError, PatternMissingError
 from aque.futures import Future
-from aque.utils import decode_callable, encode_if_required, decode_if_possible
+from aque.utils import decode_callable, encode_if_required, decode_if_possible, parse_bytes
 
 
 log = logging.getLogger(__name__)
+
+
+CPU_COUNT = psutil.cpu_count()
+MEM_TOTAL = psutil.virtual_memory().total
+
+
+_default_resources = {
+    'cpu': 1,
+    'mem': 0,
+}
+
+def sub_resources(a, b):
+    for k, v in _default_resources.iteritems():
+        b.setdefault(k, v)
+    for k, v in b.iteritems():
+        if k == 'mem' and isinstance(v, basestring):
+            v = parse_bytes(v)
+        a[k] = a.get(k, 0) - v
+    return a
 
 
 class Worker(object):
 
     def __init__(self, broker=None):
         self.broker = get_broker(broker)
+
         self._stopper = threading.Event()
+
+        self._running = []
+        self._finished_one = threading.Event()
 
     def stop(self):
         self._stopper.set()
 
+    def __del__(self):
+        self.stop()
+
+    def _available_resources(self):
+        res = {
+            'cpu': CPU_COUNT,
+            'mem': MEM_TOTAL,
+        }
+        for task in self._running:
+            sub_resources(res, task.get('requirements') or {})
+        return res
+
     def run_one(self):
-        with self.capture_task() as task:
-            if not task:
-                return False
-            self.execute(task)
-        return True
-
-    def run_to_end(self):
-        self._stopper.clear()
-        while not self._stopper.is_set() and self.run_one():
-            pass
-
-    def run_forever(self):
-        self._stopper.clear()
-        while True:
-            try:
-                self.run_to_end()
-                print 'waiting for more work...'
-                if self._stopper.wait(1):
-                    return
-            except KeyboardInterrupt:
-                return
-                
-    @contextlib.contextmanager
-    def capture_task(self):
         for task in self.iter_open_tasks():
             if self.broker.capture(task['id']):
                 try:
-                    yield task
+                    self.execute(task)
+                    return True
                 finally:
                     self.broker.release(task['id'])
+
+    def run_to_end(self):
+        self.run_forever(_forever=False)
+
+    def run_forever(self, _forever=True):
+        self._stopper.clear()
+        while not self._stopper.is_set():
+
+            resources = self._available_resources()
+            did_start_one = False
+
+            for task in self.iter_open_tasks():
+
+                # Make sure there are enough resources to run it.
+                res_estimate = resources.copy()
+                sub_resources(res_estimate, task.get('requirements') or {})
+                if any(v < 0 for v in res_estimate.itervalues()):
+                    continue
+
+                if not self.broker.capture(task['id']):
+                    continue
+
+                self._running.append(task)
+                self._finished_one.clear()
+                thread = threading.Thread(target=self._run_in_thread, args=(task, ))
+                thread.start()
+
+                log.info('started %d; resources remaining: %r' % (task['id'], res_estimate))
+
+                # Update our resources.
+                resources = res_estimate
+                did_start_one = True
+
+            if not did_start_one:
+
+                # We may be done here.
+                if not _forever and not self._running:
                     return
-        yield None
+
+                if not self._finished_one.wait(1):
+                    print 'looking for new tasks...'
+
+
+    def _run_in_thread(self, task):
+        try:
+            self.execute(task)
+        finally:
+            self.broker.release(task['id'])
+            self._running.remove(task)
+            self._finished_one.set()
 
     def iter_open_tasks(self):
 
@@ -75,8 +137,6 @@ class Worker(object):
             if task['id'] in considered:
                 continue
             considered.add(task['id'])
-
-            # TODO: make sure someone isn't working on it already.
 
             dep_ids = task.get('dependencies')
             deps = self.broker.fetch_many(dep_ids)
@@ -96,7 +156,7 @@ class Worker(object):
                     break
 
             if any(dep['status'] != 'success' for dep in deps.itervalues()):
-                tasks.extend(deps.itervalues())
+                tasks.extend(d for d in deps.itervalues() if d['status'] == 'pending')
                 continue
 
             if task['status'] == 'pending':
