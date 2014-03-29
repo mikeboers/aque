@@ -66,57 +66,32 @@ class Worker(object):
         return res
 
     def run_one(self):
+        start_time = time.time()
         for task in self.iter_open_tasks():
             if self.broker.capture(task['id']):
                 try:
+                    exec_time = time.time()
                     self.execute(task)
                     return True
                 finally:
+                    end_time = time.time()
+                    logging.debug('found task %d in %.3fms; ran in %.3fms' % (
+                        task['id'],
+                        1000 * (exec_time - start_time), 
+                        1000 * (end_time - exec_time),
+                    ))
                     self.broker.release(task['id'])
 
     def run_to_end(self):
-        self.run_forever(_forever=False)
+        self._stopper.clear()
+        while not self._stopper.is_set() and self.run_one():
+            pass
 
-    def run_forever(self, _forever=True):
+    def run_forever(self):
         self._stopper.clear()
         while not self._stopper.is_set():
-
-            resources = self._available_resources()
-            did_start_one = False
-
-            for task in self.iter_open_tasks():
-
-                # Make sure there are enough resources to run it.
-                res_estimate = resources.copy()
-                sub_resources(res_estimate, task.get('requirements') or {})
-                if any(v < 0 for v in res_estimate.itervalues()):
-                    continue
-
-                if not self.broker.capture(task['id']):
-                    continue
-
-                self._running.append(task)
-                self._finished_one.clear()
-                thread = threading.Thread(target=self._run_in_thread, args=(task, ))
-                thread.start()
-
-                log.info('started %d; running %d; resources remaining: %r' % (task['id'], len(self._running), res_estimate))
-
-                # Update our resources.
-                resources = res_estimate
-                did_start_one = True
-
-            if not did_start_one:
-
-                # We may be done here.
-                if not _forever and not self._running:
-                    return
-
-                if self._finished_one.wait(1):
-                    self._finished_one.clear()
-                else:
-                    print 'waiting for new tasks...'
-
+            if not self.run_one():
+                time.sleep(0.5)
 
     def _run_in_thread(self, task):
         try:
@@ -129,40 +104,68 @@ class Worker(object):
     def iter_open_tasks(self):
 
         tasks = list(self.broker.iter_tasks(status='pending'))
+        task_cache = dict((t['id'], t) for t in tasks)
 
         considered = set()
         while tasks:
 
-            tasks.sort(key=lambda task: (-task.get('priority', 1000), task['id']))
+            for task in tasks:
+                if '_priority_key' not in task:
+                    ### TODO: Scale by duration, relative IO speeds, etc..
+                    task['_priority_key'] = (
+                        -task.get('priority', 1000),
+                        task['id'],
+                    )
+            tasks.sort(key=lambda task: task['_priority_key'])
 
             task = tasks.pop(0)
             if task['id'] in considered:
                 continue
             considered.add(task['id'])
 
-            dep_ids = task.get('dependencies')
-            deps = self.broker.fetch_many(dep_ids)
-            for dep_id in dep_ids:
-                dep = deps.get(dep_id)
-                if not dep:
-                    log.warning('task %r is missing dependency %r' % (task['id'], dep_id))
-                    self.broker.mark_as_error(task['id'],
-                        DependencyResolutionError('task %r does not exist' % dep_id),
-                    )
-                    break
-                if dep['status'] not in ('pending', 'success'):
-                    log.info('task %r has failed dependency %r' % (task['id'], dep_id))
-                    self.broker.mark_as_error(task['id'],
-                        DependencyFailedError('task %r has status %r' % (dep_id, dep['status']))
-                    )
-                    break
-
-            if any(dep['status'] != 'success' for dep in deps.itervalues()):
-                tasks.extend(d for d in deps.itervalues() if d['status'] == 'pending')
+            # Just in case (this does actually happen with the MemoryBroker).
+            if task['status'] != 'pending':
                 continue
 
-            if task['status'] == 'pending':
-                yield task
+            dependency_ids = task.get('dependencies')
+
+            # Cache the onces we haven't seen before.
+            uncached = [tid for tid in dependency_ids if tid not in task_cache]
+            if uncached:
+                task_cache.update(self.broker.fetch_many(uncached))
+
+            skip_task = False
+
+            for tid in dependency_ids:
+
+                dep = task_cache.get(tid)
+
+                if not dep:
+                    log.warning('task %r is missing dependency %r' % (task['id'], tid))
+                    self.broker.mark_as_error(task['id'],
+                        DependencyResolutionError('task %r does not exist' % tid),
+                    )
+                    skip_task = True
+                    continue
+
+                if dep['status'] == 'pending':
+                    skip_task = True
+                    tasks.append(dep)
+
+                elif dep['status'] == 'paused':
+                    skip_task = True
+
+                elif dep['status'] != 'success':
+                    skip_task = True
+                    log.info('task %r has failed dependency %r' % (task['id'], tid))
+                    self.broker.mark_as_error(task['id'],
+                        DependencyFailedError('task %r has status %r' % (tid, dep['status']))
+                    )
+
+            if skip_task:
+                continue
+
+            yield task
 
     def execute(self, task):
         """Find the pattern handler, call it, and catch errors.
