@@ -100,7 +100,7 @@ class Worker(object):
                 thread = threading.Thread(target=self._run_in_thread, args=(task, ))
                 thread.start()
 
-                log.info('started %d; resources remaining: %r' % (task['id'], res_estimate))
+                log.info('started %d; running %d; resources remaining: %r' % (task['id'], len(self._running), res_estimate))
 
                 # Update our resources.
                 resources = res_estimate
@@ -112,7 +112,10 @@ class Worker(object):
                 if not _forever and not self._running:
                     return
 
-                if not self._finished_one.wait(1):
+                if self._finished_one.wait(1):
+                    self._finished_one.clear()
+                    print 'one finished!'
+                else:
                     print 'looking for new tasks...'
 
 

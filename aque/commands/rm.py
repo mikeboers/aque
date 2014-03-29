@@ -37,6 +37,8 @@ def rm(args):
         if status:
             filter_['status'] = status
         for task in args.broker.iter_tasks(**filter_):
+            if args.verbose:
+                print task['id']
             args.broker.delete(task['id'])
             count += 1
 

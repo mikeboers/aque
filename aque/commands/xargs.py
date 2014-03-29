@@ -41,6 +41,8 @@ def xargs(args):
         cmd = list(args.command)
         cmd.extend(t for t in tokens if t is not None)
         f = args.queue.submit_ex(pattern='shell', args=cmd)
+        if args.verbose:
+            print f.id
         ids.append(f.id)
 
     future = args.queue.submit_ex(pattern=None, dependencies=ids)
