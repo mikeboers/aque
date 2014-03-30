@@ -1,4 +1,14 @@
 
+- write a test that makes sure that multiple workers run a given task
+  only once
+
+- current_broker() and current_task() proxies
+  - this allows the pattern API to simplify to:
+    try:
+      self.broker.mark_as_success(func(task))
+    except Exception as e:
+      self.broker.mark_as_failure(task['id'], e)
+
 - run as actual user (if root)
 
 - deploy onto main servers (via AQUE_BROKER="$(ficonfig get aque_broker)")
@@ -10,13 +20,8 @@
   - can I set it's name to aque-worker after it has started, or should I
     actually make various aque-* commands?
 
-- need to get much more efficient when looking at thousands of tasks
-  - if it is a requirement of every broker that it is able to signal when
-    there is a status change in a process, then we are able to have the worker
-    only listen to that for updates (after fetching the main list, of course)
-  - broker.iter_tasks(where={'status': 'pending'}, fields=['id', 'dependencies'])
-  - worker keeps a cache of tasks that it has requested, so that it only needs
-    to hit the broker for those that it hasn't already seen
+- brokers should signal when there are new tasks so that the workers can
+  fight over them immediately
 
 - `aque kill <tid>` -> sends an event that the worker hears, and then kills
   the subprocess

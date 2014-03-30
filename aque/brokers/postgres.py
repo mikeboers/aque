@@ -16,6 +16,9 @@ import aque.utils as utils
 from .base import Broker
 
 
+log = logging.getLogger(__name__)
+
+
 class PostgresBroker(Broker):
     """A :class:`.Broker` which uses Postgresql_ as a data store and event dispatcher.
 
@@ -32,13 +35,11 @@ class PostgresBroker(Broker):
         self._kwargs = kwargs
         self._pool = self._open_pool()
 
-        self._inspect_schema()
+        self._reflect()
 
-        self._notify_stopper = utils.WaitableEvent()
         self._notify_lock = threading.Lock()
         self._notify_thread = None
 
-        self._heartbeat_stopper = threading.Event()
         self._heartbeat_lock = threading.Lock()
         self._heartbeat_thread = None
         self._captured_tids = []
@@ -53,8 +54,8 @@ class PostgresBroker(Broker):
         self.close()
 
     def close(self):
-        self._notify_stopper.set()
-
+        pass
+    
     def _notify_start(self):
         with self._notify_lock:
             if not self._notify_thread:
@@ -81,28 +82,46 @@ class PostgresBroker(Broker):
     def update_schema(self):
         with self._cursor() as cur:
             cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
+
                 id SERIAL PRIMARY KEY,
                 name TEXT,
+
                 dependencies INTEGER[],
+                requirements BYTEA,
+
                 status TEXT NOT NULL DEFAULT 'creating',
                 last_active TIMESTAMP,
+
+                -- priority
                 priority INTEGER NOT NULL DEFAULT 1000,
-                requirements BYTEA,
+                io_paths TEXT[],
+                duration INTEGER,
+
+                -- execution
                 pattern BYTEA,
                 func BYTEA,
                 args BYTEA,
                 kwargs BYTEA,
+
+                -- environmental
                 "user" TEXT,
                 "group" TEXT,
+                cwd TEXT,
+                environ BYTEA,
+
                 result BYTEA,
+
+                -- everything else
                 extra BYTEA
+
             )''')
 
-    def _inspect_schema(self):
+    def _reflect(self):
         with self._cursor() as cur:
             # Determine what rows we actually have.
             cur.execute('''SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tasks' ORDER BY ordinal_position''')
             self._task_fields = tuple(cur)
+            self._task_field_types = dict(self._task_fields)
 
     def destroy_schema(self):
         with self._cursor() as cur:
@@ -117,29 +136,31 @@ class PostgresBroker(Broker):
     def create(self, prototype=None):
         with self._cursor() as cur:
             cur.execute('''INSERT INTO tasks (status) VALUES ('creating') RETURNING id''')
-            tid = cur.fetchone()[0]
+            tid = next(cur)[0]
         if prototype:
             self.update(tid, prototype)
         return self.get_future(tid)
 
-    def fetch(self, tid):
+    def fetch(self, tid, fields=None):
+        fields = ', '.join('"%s"' % f for f in fields) if fields else '*'
         with self._cursor() as cur:
-            cur.execute('''SELECT * FROM tasks WHERE id = %s''', [tid])
+            cur.execute('''SELECT %s FROM tasks WHERE id = %%s''' % fields, [tid])
             try:
                 row = next(cur)
             except StopIteration:
                 raise ValueError('unknown task %r' % tid)
-            return self._decode_task(row)
+            return self._decode_task(cur, row)
 
-    def fetch_many(self, tids):
+    def fetch_many(self, tids, fields=None):
         if not tids:
             return {}
+        fields = ', '.join('"%s"' % f for f in fields) if fields else '*'
         with self._cursor() as cur:
-            cur.execute('''SELECT * FROM tasks WHERE id = ANY(%s)''', [list(tids)])
+            cur.execute('''SELECT %s FROM tasks WHERE id = ANY(%%s)''' % fields, [list(tids)])
             rows = list(cur)
         tasks = {}
         for row in rows:
-            task = self._decode_task(row)
+            task = self._decode_task(cur, row)
             tasks[task['id']] = task
         return tasks
 
@@ -156,15 +177,16 @@ class PostgresBroker(Broker):
             x = x[2:].decode('hex')
         return utils.decode_if_possible(x)
 
-    def _decode_task(self, row):
-        task = dict((name, self._decode(x)) for (name, type_), x in zip(self._task_fields, row))
-	task.update(task.pop('extra', None) or {})
+    def _decode_task(self, cur, row):
+        task = dict((field[0], self._decode(value)) for field, value in zip(cur.description, row))
+        task.update(task.pop('extra', None) or {})
         return task
 
     def update(self, tid, data):
 
         fields = []
         params = []
+
         for name, type_ in self._task_fields:
             try:
                 value = data.pop(name)
@@ -221,24 +243,27 @@ class PostgresBroker(Broker):
             })])
 
     def iter_tasks(self, **kwargs):
+
+        fields = kwargs.pop('fields', None)
+        fields = ', '.join('"%s"' % f for f in fields) if fields else '*'
+
+        if kwargs:
+            items = sorted(kwargs.iteritems())
+            clause = 'WHERE ' + ' AND '.join('%s = %%s' % k for k, v in items)
+            params = [v for k, v in items]
+        else:
+            clause = ''
+            params = []
+
+        query = '''SELECT %s FROM tasks %s''' % (fields, clause)
+
         with self._cursor() as cur:
 
-            if kwargs:
-                items = sorted(kwargs.iteritems())
-                clause = 'WHERE ' + ' AND '.join('%s = %%s' % k for k, v in items)
-                params = [v for k, v in items]
-            else:
-                clause = ''
-                params = []
-
-            cur.execute('''SELECT * FROM tasks %s''' % clause, params)
+            cur.execute(query, params)
             rows = list(cur)
 
         for row in rows:
-            try:
-                yield self._decode_task(row)
-            except (ImportError, ValueError):
-                pass
+            yield self._decode_task(cur, row)
 
     def _notify_target(self):
         with self._connect() as conn:
@@ -247,8 +272,8 @@ class PostgresBroker(Broker):
             cur.execute('LISTEN task_status')
             conn.commit()
 
-            while not self._notify_stopper.is_set():
-                r, _, _ = select.select([self._notify_stopper, conn], [], [], 1.0)
+            while True:
+                r, _, _ = select.select([conn], [], [], 60)
                 if conn in r:
                     conn.poll()
                     while conn.notifies:
@@ -285,7 +310,6 @@ class PostgresBroker(Broker):
         with self._heartbeat_lock:
             self._captured_tids.append(tid)
             if not self._heartbeat_thread:
-                self._heartbeat_stopper.clear()
                 self._heartbeat_thread = threading.Thread(target=self._heartbeat)
                 self._heartbeat_thread.daemon = True
                 self._heartbeat_thread.start()
@@ -297,15 +321,13 @@ class PostgresBroker(Broker):
             cur.execute('UPDATE tasks SET last_active = NULL WHERE id = %s', [tid])
         with self._heartbeat_lock:
             self._captured_tids.remove(tid)
-            if not self._captured_tids:
-                self._heartbeat_stopper.set()
-                self._heartbeat_thread = None
 
     def _heartbeat(self):
-        while not self._heartbeat_stopper.wait(15):
+        while True:
             with self._heartbeat_lock:
-                with self._cursor() as cur:
-                    cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = ANY(%s)', [list(self._captured_tids)])
-
+                if self._captured_tids:
+                    with self._cursor() as cur:
+                        cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = ANY(%s)', [list(self._captured_tids)])
+            time.sleep(15)
 
 

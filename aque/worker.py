@@ -103,36 +103,41 @@ class Worker(object):
 
     def iter_open_tasks(self):
 
-        tasks = list(self.broker.iter_tasks(status='pending'))
-        task_cache = dict((t['id'], t) for t in tasks)
+        pending_tasks = list(self.broker.iter_tasks(status='pending', fields=['id', 'status', 'dependencies']))
+
+        task_cache = dict((t['id'], t) for t in pending_tasks)
+        task_priorities = {}
 
         considered = set()
-        while tasks:
+        while True:
 
-            for task in tasks:
-                if '_priority_key' not in task:
+            # Make sure we are only looking at pending tasks that we have not
+            # already considered. (The pending check is required for the
+            # MemoryBroker, which sometimes modifies tasks.)
+            pending_tasks = [
+                task for task in pending_tasks
+                if task['status'] == 'pending' and task['id'] not in considered
+            ]
+            if not pending_tasks:
+                break
+
+            # Create dynamic priorities for every task, and sort by them.
+            for task in pending_tasks:
+                if task['id'] not in task_priorities:
                     ### TODO: Scale by duration, relative IO speeds, etc..
-                    task['_priority_key'] = (
+                    task_priorities[task['id']] = (
                         -task.get('priority', 1000),
                         task['id'],
                     )
-            tasks.sort(key=lambda task: task['_priority_key'])
+            pending_tasks.sort(key=lambda task: task_priorities[task['id']])
+            task = pending_tasks.pop(0)
 
-            task = tasks.pop(0)
-            if task['id'] in considered:
-                continue
-            considered.add(task['id'])
+            dependency_ids = task.get('dependencies') or []
 
-            # Just in case (this does actually happen with the MemoryBroker).
-            if task['status'] != 'pending':
-                continue
-
-            dependency_ids = task.get('dependencies')
-
-            # Cache the onces we haven't seen before.
-            uncached = [tid for tid in dependency_ids if tid not in task_cache]
-            if uncached:
-                task_cache.update(self.broker.fetch_many(uncached))
+            # Cache the ones we haven't seen before.
+            uncached_ids = [tid for tid in dependency_ids if tid not in task_cache]
+            if uncached_ids:
+                task_cache.update(self.broker.fetch_many(uncached_ids, fields=['id', 'status', 'dependencies']))
 
             skip_task = False
 
@@ -150,7 +155,7 @@ class Worker(object):
 
                 if dep['status'] == 'pending':
                     skip_task = True
-                    tasks.append(dep)
+                    pending_tasks.append(dep)
 
                 elif dep['status'] == 'paused':
                     skip_task = True
@@ -165,7 +170,7 @@ class Worker(object):
             if skip_task:
                 continue
 
-            yield task
+            yield self.broker.fetch(task['id'])
 
     def execute(self, task):
         """Find the pattern handler, call it, and catch errors.
@@ -192,6 +197,7 @@ class Worker(object):
                 task, out_w, err_w,
             ))
             proc.start()
+            log.log(5, 'proc %d for task %d started' % (proc.pid, task['id']))
 
             # Close our copies of the write end of the pipes.
             os.close(out_w)
@@ -200,6 +206,7 @@ class Worker(object):
             # Wait for it to finish.
             self._watch_fds(out_r, err_r)
             proc.join()
+            log.log(5, 'proc %d for task %d joined' % (proc.pid, task['id']))
 
         else:
             self._execute(task)
