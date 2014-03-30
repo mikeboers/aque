@@ -15,6 +15,7 @@ import psutil
 from aque.brokers import get_broker
 from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternIncompleteError, PatternMissingError
 from aque.futures import Future
+from aque.local import _local
 from aque.utils import decode_callable, encode_if_required, decode_if_possible, parse_bytes
 
 
@@ -252,18 +253,16 @@ class Worker(object):
             if pattern_func is None:
                 raise PatternMissingError('cannot decode pattern from %r' % encoded_pattern)
 
-            pattern_func(self.broker, task)
+            _local.task = task
+            _local.broker = self.broker
+
+            res = pattern_func(task)
 
         except KeyboardInterrupt:
             raise
         
         except Exception as e:
             self.broker.mark_as_error(task['id'], e)
-            return
-            # traceback.print_exc()
 
-        # Make sure that the pattern actually did something.
-        # XXX: Surely I can just fetch one field...
-        if self.broker.fetch(task['id'])['status'] == 'pending':
-            self.broker.mark_as_error(task['id'], PatternIncompleteError('the pattern did not complete'))
-
+        else:
+            self.broker.mark_as_success(task['id'], res)

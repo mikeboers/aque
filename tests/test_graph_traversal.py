@@ -3,7 +3,8 @@ import functools
 from . import *
 
 
-def graph_order(broker, task):
+def graph_order(task):
+    broker = current_broker()
     res = []
     for dep_id in task.get('dependencies', ()):
         dep = broker.fetch(dep_id)
@@ -11,7 +12,7 @@ def graph_order(broker, task):
             if x not in res:
                 res.append(x)
     res.append(task.get('name', task['id']))
-    broker.mark_as_success(task['id'], res)
+    return res
 
 
 class TestGraphTraversal(BrokerTestCase):

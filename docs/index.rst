@@ -17,6 +17,7 @@ Contents:
    patterns
    brokers
    exceptions
+   locals
 
 
 

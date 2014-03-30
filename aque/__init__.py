@@ -3,6 +3,7 @@ from aque.futures import Future
 from aque.queue import Queue
 from aque.brokers.memory import MemoryBroker
 from aque.worker import Worker
+from aque.local import current_task, current_broker
 
 
 def execute(task):

@@ -6,7 +6,7 @@ import subprocess
 log = logging.getLogger(__name__)
 
 
-def do_shell_task(broker, task):
+def do_shell_task(task):
 
     cmd = task['args']
     kwargs = task.get('kwargs') or {}
@@ -35,9 +35,8 @@ def do_shell_task(broker, task):
         proc.stdin.close()
 
     code = proc.wait()
-
     if code:
-        broker.mark_as_error(task['id'], subprocess.CalledProcessError(code, cmd))
+        raise subprocess.CalledProcessError(code, cmd)
     else:
-        broker.mark_as_success(task['id'], 0)
+        return 0
 
