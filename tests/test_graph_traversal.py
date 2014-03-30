@@ -26,7 +26,7 @@ class TestGraphTraversal(BrokerTestCase):
         
         f = self.queue.submit_ex(**a)
         self.worker.run_to_end()
-        res = f.result()
+        res = f.result(0.1)
 
         self.assertEqual(res, ['b', 'c', 'a'])
 
@@ -43,7 +43,7 @@ class TestGraphTraversal(BrokerTestCase):
 
         f = self.queue.submit_ex(**a)
         self.worker.run_to_end()
-        res = f.result()
+        res = f.result(0.1)
         
         self.assertEqual(res, ['d', 'b', 'c', 'a'])
 

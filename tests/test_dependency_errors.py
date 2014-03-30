@@ -8,7 +8,7 @@ class TestDependencyResolutionErrors(BrokerTestCase):
         f = self.queue.submit_ex(tuple, dependencies=[123456])
         self.worker.run_to_end()
         
-        self.assertRaises(DependencyResolutionError, f.result)
+        self.assertRaises(DependencyResolutionError, f.result, 0.1)
 
     def test_failed_dependency(self):
 
@@ -17,6 +17,6 @@ class TestDependencyResolutionErrors(BrokerTestCase):
 
         self.worker.run_to_end()
 
-        self.assertRaises(ValueError, a.result)
-        self.assertRaises(DependencyFailedError, b.result)
+        self.assertRaises(ValueError, a.result, 0.1)
+        self.assertRaises(DependencyFailedError, b.result, 0.1)
         

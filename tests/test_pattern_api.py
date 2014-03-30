@@ -7,4 +7,4 @@ class TestPatternAPI(BrokerTestCase):
 
         f = self.queue.submit_ex(tuple, pattern='not a pattern')
         self.worker.run_to_end()
-        self.assertRaises(PatternMissingError, f.result)
+        self.assertRaises(PatternMissingError, f.result, 0.1)
