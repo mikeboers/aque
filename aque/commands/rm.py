@@ -29,9 +29,7 @@ def rm(args):
     if not statuses and not args.id:
         exit(1)
 
-    count = len(args.id)
-    for tid in args.id:
-        args.broker.delete(tid)
+    to_delete = [int(x) for x in args.id]
     for status in statuses:
         filter_ = {}
         if status:
@@ -39,7 +37,7 @@ def rm(args):
         for task in args.broker.iter_tasks(**filter_):
             if args.verbose:
                 print task['id']
-            args.broker.delete(task['id'])
-            count += 1
+            to_delete.append(task['id'])
 
-    print 'removed', count, 'tasks'
+    args.broker.delete_many(to_delete)
+    print 'removed', len(to_delete), 'tasks'

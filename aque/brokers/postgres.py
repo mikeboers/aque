@@ -1,11 +1,12 @@
-import contextlib
-import json
-import threading
-import select
-import logging
-import time
-import datetime
 from Queue import Queue, Empty
+import contextlib
+import datetime
+import json
+import logging
+import pickle
+import select
+import threading
+import time
 
 import psutil
 import psycopg2.pool
@@ -140,12 +141,18 @@ class PostgresBroker(Broker):
         return future
 
     def create(self, prototype=None):
+        return self.create_many([prototype or {}])[0]
+
+    def create_many(self, prototypes):
+        fields, encoded = self._encode_many(prototypes)
+        params = [[e[f] for f in fields] for e in encoded]
         with self._cursor() as cur:
-            cur.execute('''INSERT INTO tasks (status) VALUES ('creating') RETURNING id''')
-            tid = next(cur)[0]
-        if prototype:
-            self.update(tid, prototype)
-        return self.get_future(tid)
+            cur.execute('''INSERT INTO tasks (%s) VALUES %s RETURNING id''' % (
+                ', '.join('"%s"' % f for f in fields),
+                ', '.join('(%s)' % cur.mogrify(','.join(['%s'] * len(p)), p) for p in params)
+            ))
+            tids = [row[0] for row in cur]
+        return [self.get_future(tid) for tid in tids]
 
     def fetch(self, tid, fields=None):
         fields = ', '.join('"%s"' % f for f in fields) if fields else '*'
@@ -170,53 +177,65 @@ class PostgresBroker(Broker):
             tasks[task['id']] = task
         return tasks
 
-    def _encode(self, x):
-        x = utils.encode_if_required(x)
-        if isinstance(x, basestring) and not x.isalnum():
-            x = pg.Binary(x)
-        return x
+    def _encode(self, field, x):
+        if self._task_field_types.get(field) == 'bytea':
+            return pg.Binary(pickle.dumps(x, protocol=-1))
+        else:
+            return x
 
-    def _decode(self, x):
+    def _decode(self, field, x):
         if isinstance(x, buffer):
-            x = str(x)
-        if isinstance(x, basestring) and x.startswith('\\x'):
-            x = x[2:].decode('hex')
-        return utils.decode_if_possible(x)
+            return pickle.loads(x)
+        else:
+            return x
+
+    def _encode_task(self, task):
+
+        extra = {}
+        res = {}
+        for k, v in task.iteritems():
+            if k in self._task_field_types:
+                res[k] = self._encode(k, v)
+            else:
+                extra[k] = v
+
+        if extra:
+            res['extra'] = self._encode('extra', extra)
+
+        res.pop('id', None)
+
+        return res
+
+    def _encode_many(self, tasks):
+        keys = set(tasks[0])
+        fields = sorted(keys)
+        encoded = []
+        for t in tasks:
+            if set(t) != keys:
+                raise ValueError('prototypes do not share keys')
+            e = self._encode_task(t)
+            encoded.append(e)
+        return fields, encoded
 
     def _decode_task(self, cur, row):
-        task = dict((field[0], self._decode(value)) for field, value in zip(cur.description, row))
+        task = dict((field[0], self._decode(field[0], value)) for field, value in zip(cur.description, row))
         task.update(task.pop('extra', None) or {})
         return task
 
     def update(self, tid, data):
-
-        fields = []
-        params = []
-
-        for name, type_ in self._task_fields:
-            try:
-                value = data.pop(name)
-            except KeyError:
-                pass
-            else:
-                fields.append(name)
-                if type_ == 'bytea':
-                    value = self._encode(value)
-                params.append(value)
-
-        if data:
-            fields.append('extra')
-            params.append(self._encode(data))
-
+        encoded = self._encode_task(data)
+        fields, params = zip(*encoded.iteritems())
+        params += (tid, )
         query = 'UPDATE tasks SET %s WHERE id = %%s' % ', '.join('"%s" = %%s' % name for name in fields)
-        params.append(tid)
-
         with self._cursor() as cur:
             cur.execute(query, params)
 
     def delete(self, tid):
+        self.delete_many([tid])
+
+    def delete_many(self, tids):
         with self._cursor() as cur:
-            cur.execute('DELETE FROM tasks WHERE id = %s', [tid])
+            cur.execute('DELETE FROM tasks WHERE id = ANY(%s)', [list(tids)])
     
     def set_status_and_notify(self, tid, status):
         with self._cursor() as cur:
@@ -230,7 +249,7 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute(
                 '''UPDATE tasks SET status = 'success', result = %s WHERE id = %s''',
-                [self._encode(result), tid],
+                [self._encode('result', result), tid],
             )
             cur.execute('''NOTIFY task_status, %s''', [json.dumps({
                 'id': tid,
@@ -241,7 +260,7 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute(
                 '''UPDATE tasks SET status = 'error', result = %s WHERE id = %s''',
-                [self._encode(exception), tid],
+                [self._encode('result', exception), tid],
             )
             cur.execute('''NOTIFY task_status, %s''', [json.dumps({
                 'id': tid,
@@ -293,11 +312,11 @@ class PostgresBroker(Broker):
         if payload['status'] == 'success':
             with self._cursor() as cur:
                 cur.execute('SELECT result FROM tasks WHERE id = %s', [payload['id']])
-                future.set_result(self._decode(next(cur)[0]))
+                future.set_result(self._decode('result', next(cur)[0]))
         elif payload['status'] == 'error':
             with self._cursor() as cur:
                 cur.execute('SELECT result FROM tasks WHERE id = %s', [payload['id']])
-                future.set_exception(self._decode(next(cur)[0]))
+                future.set_exception(self._decode('result', next(cur)[0]))
 
     def capture(self, tid):
 
