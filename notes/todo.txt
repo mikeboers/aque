@@ -1,13 +1,13 @@
 
-- take proper account of cpu and memory resources
-- tasks should have "platform", "host", etc., requirements
-- tasks should make sure that user actually exists before taking the job,
-  and warning if the user does not exist
+- write basic usage docs
+
+- tasks should have host requirements
+
+- lots of logging for the worker
+- task capture does not seem to actually work properly on long-running tasks
 
 - is there a way of detecting what the mount point is for various io_paths and
   making sure that it corresponds?
-
-- EventLoop.selectables -> active (add a stopped list)
 
 - Broker.capture -> Broker.acquire
 
@@ -18,10 +18,13 @@
 
 - write a test that makes sure that multiple workers run a given task
   only once
-
-- run as actual user (if root)
+    change what the timeouts are heartbeats are for this test so that we
+    can simulate
 
 - deploy onto main servers (via AQUE_BROKER="$(ficonfig get aque_broker)")
+  √ hk
+  - nt
+  - ex
 
 - `aque worker --reload` uses metatools reloader (or change detection and
   a restart via os.exec-ing back to itself)
