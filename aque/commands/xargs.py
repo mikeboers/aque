@@ -55,13 +55,13 @@ def xargs(args):
     else:
         cpus = None
 
+    prototypes = []
     for tokens in token_iter:
         cmd = list(args.command)
         cmd.extend(t for t in tokens if t is not None)
-        f = args.queue.submit_ex(pattern='shell', args=cmd, cpus=cpus)
-        if args.verbose:
-            print f.id
-        ids.append(f.id)
+        prototypes.append(dict(pattern='shell', args=cmd, cpus=cpus))
 
-    future = args.queue.submit_ex(pattern=None, dependencies=ids)
+    futures = args.queue.submit_many(prototypes)
+    future = args.queue.submit_ex(pattern=None, dependencies=futures)
+
     print future.id

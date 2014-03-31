@@ -1,4 +1,9 @@
 
+- Queue.submit_many(prototypes)
+  
+  look at a list of prototypes, flatten the full list of dependencies, keep
+  submitting those which do not have any outstanding dependences
+
 - write better usage docs
 
 - tasks should enforce host requirements

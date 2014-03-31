@@ -61,3 +61,33 @@ class TestGraphTraversal(BrokerTestCase):
         b['dependencies'] = [c]
         a['dependencies'] = [a, b]
         self.assertRaises(DependencyResolutionError, execute, a)
+
+
+class TestGraphFlattening(BrokerTestCase):
+
+    def test_simple_flattening(self):
+
+        a = dict(name='a')
+        b = dict(name='b')
+        c = dict(name='c')
+        d = dict(name='d')
+        a['dependencies'] = [b, c]
+
+        flattened = list(self.queue._flatten_prototypes([a, d]))
+        self.assertEqual(flattened, [b, c, a, d])
+
+    def test_loop(self):
+        a = {}
+        b = {'dependencies': [a]}
+        a['dependencies'] = [b]
+        self.assertRaises(DependencyResolutionError, list, self.queue._flatten_prototypes([a], {}))
+
+    def test_looped_branches(self):
+        a = {}
+        b = {}
+        c = {}
+        c['dependencies'] = [b]
+        b['dependencies'] = [c]
+        a['dependencies'] = [a, b]
+        self.assertRaises(DependencyResolutionError, list, self.queue._flatten_prototypes([a], {}))
+

@@ -237,13 +237,15 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('DELETE FROM tasks WHERE id = ANY(%s)', [list(tids)])
     
-    def set_status_and_notify(self, tid, status):
+    def set_status_and_notify(self, tids, status):
+        if isinstance(tids, int):
+            tids = [tids]
         with self._cursor() as cur:
-            cur.execute('''UPDATE tasks SET status = %s WHERE id = %s''', (status, tid))
-            cur.execute('''NOTIFY task_status, %s''', [json.dumps({
+            cur.execute('''UPDATE tasks SET status = %s WHERE id = ANY(%s)''', (status, tids))
+            cur.executemany('''NOTIFY task_status, %s''', [[json.dumps({
                 'id': tid,
                 'status': status,
-            })])
+            })] for tid in tids])
 
     def mark_as_success(self, tid, result):
         with self._cursor() as cur:

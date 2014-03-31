@@ -53,6 +53,6 @@ def status(args):
             parts.append(repr(task['name']))
         parts.append(func_spec)
         if task['status'] in ('success', 'error'):
-            parts.append('-> %r' % task['result'])
+            parts.append('-> %r' % (task['result'], ))
 
         print ' '.join(parts)
