@@ -4,6 +4,7 @@ import logging
 import multiprocessing
 import os
 import pprint
+import pwd
 import select
 import sys
 import threading
@@ -25,6 +26,8 @@ log = logging.getLogger(__name__)
 
 CPU_COUNT = psutil.cpu_count()
 MEM_TOTAL = psutil.virtual_memory().total
+IS_ROOT = not os.getuid()
+LOGIN = os.getlogin()
 
 
 class BaseJob(object):
@@ -191,39 +194,76 @@ class Worker(object):
                 memory -= task_memory(obj.task)
         return cpus, memory
 
+    def _can_currently_satisfy_requirements(self, task, cpus, memory):
+
+        # Obvious ones.
+        if task_cpus(task) > cpus + 0.1:
+            return False
+        if task_memory(task) > memory:
+            return False
+
+        return True
+
+    def _can_ever_satisfy_requirements(self, task):
+
+        # If the worker is not root, then we can only do jobs for our own user.
+        if not IS_ROOT and LOGIN != task['user']:
+            return False
+
+        # Make sure we have this user.
+        try:
+            pwd.getpwnam(task['user'])
+        except KeyError:
+            return False
+
+        if task.get('platform') and task['platform'] != sys.platform:
+            return False
+
+        return True
+
+    def _spawn_jobs(self, count):
+
+        cpus, memory = self._resources_left()
+
+        # Check that we haven't spawned too many yet AND there are enough
+        # resources to spare.
+        # TODO: wait until a reasonable amount of time has passed or we have
+        #       notification that there are new jobs.
+        task_iter = None
+        while (count is None or count > 0) and cpus > 0 and memory > 0:
+
+            task_iter = task_iter or self.iter_open_tasks()
+            try:
+                task = next(task_iter)
+            except StopIteration:
+                break
+
+            # TODO: track these so that we don't bother looking at the same
+            # tasks over and over.
+            if not self._can_ever_satisfy_requirements(task):
+                continue
+            if not self._can_currently_satisfy_requirements(task, cpus, memory):
+                continue
+
+            if not self.broker.capture(task['id']):
+                continue
+
+            job = (ProcJob if self.broker.can_fork else ThreadJob)(self, task)
+            job.start()
+            self._event_loop.add(job)
+
+            cpus, memory = self._resources_left()
+
+            count = count - 1 if count is not None else None
+
+        return count
+
     def _run(self, count, wait_for_more):
 
         self._stopper.clear()
         while not self._stopper.is_set():
 
-            cpus, memory = self._resources_left()
-
-            # Check that we haven't spawned too many yet AND there are enough
-            # resources to spare.
-            # TODO: wait until a reasonable amount of time has passed or we have
-            #       notification that there are new jobs.
-            task_iter = None
-            while (count is None or count > 0) and cpus > 0 and memory > 0:
-
-                task_iter = task_iter or self.iter_open_tasks()
-                try:
-                    task = next(task_iter)
-                except StopIteration:
-                    break
-
-                # TODO: Make sure we can satisfy it.
-
-                if not self.broker.capture(task['id']):
-                    continue
-
-                job = (ProcJob if self.broker.can_fork else ThreadJob)(self, task)
-                job.start()
-                self._event_loop.add(job)
-
-                cpus, memory = self._resources_left()
-
-                count = count - 1 if count is not None else None
-
+            count = self._spawn_jobs(count)
             self._event_loop.process(timeout=1.0)
 
             # Deal with any jobs that just stopped.

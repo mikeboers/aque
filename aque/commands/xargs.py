@@ -35,7 +35,6 @@ def tokenize_words(count):
     argument('-c', '--cpus', type=int),
     argument('command', nargs='+'),
     help='schedule a series of commands like xargs',
-    aliases=['s', 'sub'],
 )
 def xargs(args):
 
