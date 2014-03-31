@@ -15,13 +15,13 @@ class TestSubmitCommand(BrokerTestCase):
         one_human_status = self_check_output(['status', str(tid)])
         self.assertSearch(r'\b%d\s+pending' % tid, one_human_status)
 
-        with capture_output() as (out, _):
+        with override_stdio() as (out, _):
             self_call(['status', '--csv', 'id,status'])
         full_csv_status = list(DictReader(out))
         self.assertTrue(len(full_csv_status) >= 1)
         self.assertTrue(any(int(t['id']) == tid and t['status'] == 'pending' for t in full_csv_status))
 
-        with capture_output() as (out, _):
+        with override_stdio() as (out, _):
             self_call(['status', '--csv', 'id,status', str(tid)])
         one_csv_status = list(DictReader(out))
         self.assertTrue(len(one_csv_status) == 1)
@@ -29,7 +29,7 @@ class TestSubmitCommand(BrokerTestCase):
         self.assertEqual(int(t['id']), tid )
         self.assertEqual(t['status'], 'pending')
 
-        with capture_output() as (out, _):
+        with override_stdio() as (out, _):
             self.worker.run_to_end()
 
         self.assertIn(msg, out.getvalue())

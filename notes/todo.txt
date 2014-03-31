@@ -4,6 +4,9 @@
 - tasks should make sure that user actually exists before taking the job,
   and warning if the user does not exist
 
+- is there a way of detecting what the mount point is for various io_paths and
+  making sure that it corresponds?
+
 - EventLoop.selectables -> active (add a stopped list)
 
 - Broker.capture -> Broker.acquire

@@ -1,14 +1,17 @@
 from cStringIO import StringIO
+from csv import DictReader
 from pprint import pprint
 from subprocess import CalledProcessError
 from unittest import TestCase as BaseTestCase
 import contextlib
+import datetime
+import errno
 import os
 import re
+import shutil
 import sys
 import threading
 import urlparse
-from csv import DictReader
 
 import psycopg2 as pg2
 
@@ -23,19 +26,40 @@ from aque.queue import Queue
 from aque.worker import Worker
 
 
+def sandbox(*args):
+    path = os.path.abspath(os.path.join(
+        __file__,
+        '..',
+        'sandbox',
+        datetime.datetime.utcnow().isoformat('T'),
+        *args
+    ))
+    try:
+        os.makedirs(path)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+    return path
+
+
 @contextlib.contextmanager
-def capture_output(out=True, err=False):
-    real_out, real_err = sys.stdout, sys.stderr
-    if out:
-        sys.stdout = out = StringIO()
-    if err:
-        sys.stderr = err = StringIO()
-    yield out, err
-    if out:
-        out.seek(0)
-    if err:
-        err.seek(0)
-    sys.stdout, sys.stderr = real_out, real_err
+def override_stdio(stdout=True, stderr=False, stdin=None):
+
+    real_in, real_out, real_err = sys.stdin, sys.stdout, sys.stderr
+    if stdin is not None:
+        sys.stdin = StringIO(stdin)
+    if stdout:
+        sys.stdout = stdout = StringIO()
+    if stderr:
+        sys.stderr = stderr = StringIO()
+    try:
+        yield stdout, stderr
+    finally:
+        if stdout:
+            stdout.seek(0)
+        if stderr:
+            stderr.seek(0)
+        sys.stdin, sys.stdout, sys.stderr = real_in, real_out, real_err
 
 
 def self_call(args):
@@ -44,13 +68,17 @@ def self_call(args):
         raise CalledProcessError(res)
 
 
-def self_check_output(args):
-    with capture_output() as (out, _):
+def self_check_output(args, stdin=None):
+    with override_stdio(stdin=stdin) as (out, _):
         main(args)
     return out.getvalue()
 
 
 class TestCase(BaseTestCase):
+
+    @property
+    def sandbox(self):
+        return sandbox(self.id())
 
     def assertSearch(self, pattern, content):
         if not re.search(pattern, content):
