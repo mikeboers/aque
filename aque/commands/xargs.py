@@ -1,6 +1,11 @@
+from __future__ import division
+
 import itertools
 import sys
 import shlex
+
+import psutil
+
 from aque.commands.main import command, argument
 
 
@@ -27,6 +32,7 @@ def tokenize_words(count):
     argument('-L', '--lines', type=int),
     argument('-n', '--words', type=int),
     argument('-P', '--maxprocs', type=int),
+    argument('-c', '--cpus', type=int),
     argument('command', nargs='+'),
     help='schedule a series of commands like xargs',
     aliases=['s', 'sub'],
@@ -42,10 +48,17 @@ def xargs(args):
     else:
         token_iter = tokenize_all()
 
+    if args.cpus:
+        cpus = args.cpus
+    elif args.maxprocs:
+        cpus = psutil.cpu_count() / args.maxprocs
+    else:
+        cpus = None
+
     for tokens in token_iter:
         cmd = list(args.command)
         cmd.extend(t for t in tokens if t is not None)
-        f = args.queue.submit_ex(pattern='shell', args=cmd)
+        f = args.queue.submit_ex(pattern='shell', args=cmd, cpus=cpus)
         if args.verbose:
             print f.id
         ids.append(f.id)
