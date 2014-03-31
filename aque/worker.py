@@ -147,6 +147,18 @@ class ProcJob(BaseJob):
         self.execute()
 
 
+def task_cpus(task):
+    cpus = task.get('cpus')
+    if cpus is None:
+        return 1.0
+    else:
+        return float(cpus)
+
+def task_memory(task):
+    memory = task.get('memory')
+    return memory or 0
+
+
 class Worker(object):
 
     def __init__(self, broker=None, max_cpus=None):
@@ -154,7 +166,6 @@ class Worker(object):
 
         self._event_loop = EventLoop()
         self._stopper = threading.Event()
-        self._cpus_left = max_cpus or CPU_COUNT
 
     def stop(self):
         self._stopper.set()
@@ -171,16 +182,28 @@ class Worker(object):
     def run_forever(self):
         self._run(count=None, wait_for_more=True)
 
+    def _resources_left(self):
+        cpus = CPU_COUNT
+        memory = MEM_TOTAL
+        for obj in self._event_loop.active:
+            if isinstance(obj, BaseJob):
+                cpus -= task_cpus(obj.task)
+                memory -= task_memory(obj.task)
+        return cpus, memory
+
     def _run(self, count, wait_for_more):
 
         self._stopper.clear()
         while not self._stopper.is_set():
 
-            # Check that we haven't spawned too many yet AND there is CPU to spare.
+            cpus, memory = self._resources_left()
+
+            # Check that we haven't spawned too many yet AND there are enough
+            # resources to spare.
             # TODO: wait until a reasonable amount of time has passed or we have
             #       notification that there are new jobs.
             task_iter = None
-            while (count is None or count > 0) and self._cpus_left > 0:
+            while (count is None or count > 0) and cpus > 0 and memory > 0:
 
                 task_iter = task_iter or self.iter_open_tasks()
                 try:
@@ -197,7 +220,8 @@ class Worker(object):
                 job.start()
                 self._event_loop.add(job)
 
-                self._cpus_left -= 1
+                cpus, memory = self._resources_left()
+
                 count = count - 1 if count is not None else None
 
             self._event_loop.process(timeout=1.0)
@@ -207,7 +231,6 @@ class Worker(object):
             for obj in self._event_loop.stopped:
                 if isinstance(obj, BaseJob):
                     obj.close()
-                    self._cpus_left += 1
                     self.broker.release(obj.id)
                     job_just_finished = True
 

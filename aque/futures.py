@@ -23,3 +23,6 @@ class Future(_base.Future):
             dep = self.broker.get_future(dep_id)
             for x in dep._iter(visited):
                 yield x
+
+    def task(self):
+        return self.broker.fetch(self.id)

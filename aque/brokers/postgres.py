@@ -87,7 +87,12 @@ class PostgresBroker(Broker):
                 name TEXT,
 
                 dependencies INTEGER[],
-                requirements BYTEA,
+
+                -- requirements
+                cpus REAL, -- fractional CPUs are okay
+                memory INTEGER, -- in bytes
+                platform TEXT,
+                host TEXT,
 
                 status TEXT NOT NULL DEFAULT 'creating',
                 last_active TIMESTAMP,
@@ -109,6 +114,7 @@ class PostgresBroker(Broker):
                 cwd TEXT,
                 environ BYTEA,
 
+                -- the final result, or exception (depending on status)
                 result BYTEA,
 
                 -- everything else
