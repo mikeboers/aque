@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 CPU_COUNT = psutil.cpu_count()
 MEM_TOTAL = psutil.virtual_memory().total
 IS_ROOT = not os.getuid()
-LOGIN = os.getlogin()
+LOGIN = pwd.getpwuid(os.getuid()).pw_name
 
 
 class BaseJob(object):
@@ -152,6 +152,8 @@ class ProcJob(BaseJob):
             os.setregid(gid, gid)
             os.setreuid(uid, uid)
 
+        os.chdir(self.task['cwd'])
+
         # Prep the stdio; close stdin and redirect stdout/err to the parent's
         # preferred pipes. Everything should clean itself up.
         os.close(0)
@@ -219,9 +221,15 @@ class Worker(object):
 
     def _can_ever_satisfy_requirements(self, task):
 
+        cant_change_state = not IS_ROOT or not self.broker.can_fork
+
         # If the worker is not root or unable to setuid, then we can only do
         # jobs for our own user.
-        if (not IS_ROOT or not self.broker.can_fork) and LOGIN != task['user']:
+        if cant_change_state and LOGIN != task['user']:
+            return False
+
+        if cant_change_state and os.getcwd() != task['cwd']:
+            print 'rejecting due to CWD', repr(os.getcwd()), repr(task['cwd'])
             return False
 
         # Make sure we have this user.
