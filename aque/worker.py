@@ -221,24 +221,25 @@ class Worker(object):
 
     def _can_ever_satisfy_requirements(self, task):
 
-        cant_change_state = not IS_ROOT or not self.broker.can_fork
-
         # If the worker is not root or unable to setuid, then we can only do
         # jobs for our own user.
-        if cant_change_state and LOGIN != task['user']:
+        if (not IS_ROOT or not self.broker.can_fork) and LOGIN != task['user']:
+            log.debug('rejecting %d due to mismatched user' % task['id'])
             return False
 
-        if cant_change_state and os.getcwd() != task['cwd']:
-            print 'rejecting due to CWD', repr(os.getcwd()), repr(task['cwd'])
+        if not self.broker.can_fork and os.getcwd() != task['cwd']:
+            log.debug('rejecting %d due to mismatched cwd' % task['id'])
             return False
 
         # Make sure we have this user.
         try:
             pwd.getpwnam(task['user'])
         except KeyError:
+            log.debug('rejecting %d due to unknown user' % task['id'])
             return False
 
         if task.get('platform') and task['platform'] != sys.platform:
+            log.debug('rejecting %d due to mismatched platform' % task['id'])
             return False
 
         return True
