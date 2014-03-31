@@ -1,7 +1,7 @@
 
-- write basic usage docs
+- write better usage docs
 
-- tasks should have host requirements
+- tasks should enforce host requirements
 
 - lots of logging for the worker
 - task capture does not seem to actually work properly on long-running tasks
@@ -22,6 +22,7 @@
     can simulate
 
 - deploy onto main servers (via AQUE_BROKER="$(ficonfig get aque_broker)")
+  - fix permissions; everyone is --superuser so far
   √ hk
   - nt
   - ex
@@ -41,13 +42,6 @@
 
 - broker should have a standard event listening interface. Take a look at the
   blinker API and see if we should replicate that with Postgres.
-
-- aque xargs only needs to support -P (for parallelism) and -L (for lines)
-
-  - "-P" should set the CPU reservation to "/<value>" (or similar) to indicate
-    that we want to reserve a fraction of the total. Should do it this way
-    instead of on the submitter because the submitter may not have a matching
-    number of processors.
 
 - add stdin, stdout, stderr, but should I also have stdin_value,
   somehow encode that into the same field, or just don't have that capability?

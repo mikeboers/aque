@@ -51,8 +51,8 @@ def status(args):
         ]
         if task.get('name'):
             parts.append(repr(task['name']))
+        parts.append(func_spec)
         if task['status'] in ('success', 'error'):
             parts.append('-> %r' % task['result'])
-        parts.append(func_spec)
 
         print ' '.join(parts)

@@ -10,11 +10,11 @@ def func_to_encode():
 class TestEncodingUtils(TestCase):
     
     def test_encoding(self):
-
         self.assertEqual(encode_if_required('hello'), 'hello')
-        self.assertEqual(encode_if_required(123), '123')
-        self.assertEqual(encode_if_required(range(5)), '[0,1,2,3,4]')
-        self.assertEqual(encode_if_required(('a', 'b', 'c')), '["a","b","c"]')
+        self.assertEqual(encode_if_required(123), 'json:123')
+        self.assertEqual(encode_if_required(range(5)), 'json:[0,1,2,3,4]')
+        self.assertEqual(encode_if_required(('a', 'b', 'c', '"quotes"')), 'json:["a","b","c","\\"quotes\\""]')
+        self.assertTrue(encode_if_required(tuple).startswith('pickle:'))
 
     def test_roundtrip(self):
         for v in (
@@ -31,12 +31,14 @@ class TestEncodingUtils(TestCase):
 
     def test_encode_dict(self):
 
-        original = dict(int=1, str='hello', list=range(5), func=func_to_encode)
+        original = dict(int=1, str='hello', quotes=['"quotes"'], list=range(5), func=func_to_encode)
         encoded = encode_values_when_required(original)
 
-        self.assertEqual(encoded['int'], '1')
+        self.assertEqual(encoded['int'], 'json:1')
         self.assertEqual(encoded['str'], 'hello')
-        self.assertEqual(encoded['list'], '[0,1,2,3,4]')
+        self.assertEqual(encoded['list'], 'json:[0,1,2,3,4]')
+        self.assertEqual(encoded['quotes'], 'json:["\\"quotes\\""]')
+        self.assertTrue(encoded['func'].startswith('pickle:'))
         # Can't really check the function here.
 
         decoded = decode_values_when_possible(encoded)

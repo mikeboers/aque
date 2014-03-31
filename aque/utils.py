@@ -24,9 +24,9 @@ def encode_if_required(value):
         return value
     else:
         try:
-            return json.dumps(value, separators=(',', ':'))
+            return 'json:' + json.dumps(value, separators=(',', ':'))
         except TypeError:
-            return pickle.dumps(value, protocol=-1)
+            return 'pickle:' + pickle.dumps(value, protocol=-1)
 
 
 def decode_if_possible(encoded):
@@ -40,14 +40,18 @@ def decode_if_possible(encoded):
         return encoded
 
     try:
-        return pickle.loads(encoded)
+        if encoded.startswith('pickle:'):
+            return pickle.loads(encoded[7:])
     except PickleError:
         pass
     except (AttributeError, ImportError, TypeError):
         log.warning('pickle is no longer valid', exc_info=True)
+    except:
+        log.exception('pickle.dumps error from %r' % encoded)
 
     try:
-        return json.loads(encoded)
+        if encoded.startswith('json:'):
+            return json.loads(encoded[5:])
     except ValueError:
         pass
 
