@@ -1,4 +1,5 @@
 import contextlib
+import grp
 import itertools
 import logging
 import multiprocessing
@@ -139,6 +140,18 @@ class ProcJob(BaseJob):
 
         self.broker.did_fork()
 
+        if IS_ROOT:
+
+            # Drop permissions.
+            uid = pwd.getpwnam(self.task['user']).pw_uid
+            try:
+                gid = grp.getgrnam(self.task['group']).gr_gid
+            except KeyError:
+                gid = grp.getgrgid(uid).gr_gid
+
+            os.setregid(gid, gid)
+            os.setreuid(uid, uid)
+
         # Prep the stdio; close stdin and redirect stdout/err to the parent's
         # preferred pipes. Everything should clean itself up.
         os.close(0)
@@ -206,8 +219,9 @@ class Worker(object):
 
     def _can_ever_satisfy_requirements(self, task):
 
-        # If the worker is not root, then we can only do jobs for our own user.
-        if not IS_ROOT and LOGIN != task['user']:
+        # If the worker is not root or unable to setuid, then we can only do
+        # jobs for our own user.
+        if (not IS_ROOT or not self.broker.can_fork) and LOGIN != task['user']:
             return False
 
         # Make sure we have this user.
