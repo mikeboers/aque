@@ -17,6 +17,7 @@ from aque.exceptions import DependencyFailedError, DependencyResolutionError, Pa
 from aque.futures import Future
 from aque.local import _local
 from aque.utils import decode_callable, encode_if_required, decode_if_possible, parse_bytes
+from aque.eventloop import Event, EventLoop, StopSelection
 
 
 log = logging.getLogger(__name__)
@@ -26,19 +27,108 @@ CPU_COUNT = psutil.cpu_count()
 MEM_TOTAL = psutil.virtual_memory().total
 
 
-_default_resources = {
-    'cpu': 1,
-    'mem': 0,
-}
+class BaseJob(object):
 
-def sub_resources(a, b):
-    for k, v in _default_resources.iteritems():
-        b.setdefault(k, v)
-    for k, v in b.iteritems():
-        if k == 'mem' and isinstance(v, basestring):
-            v = parse_bytes(v)
-        a[k] = a.get(k, 0) - v
-    return a
+    def __init__(self, worker, task):
+        self.worker = worker
+        self.broker = worker.broker
+        self.task = task
+        self.id = task['id']
+
+    def start(self):
+        pass
+
+    def execute(self):
+        try:
+
+            encoded_pattern = self.task.get('pattern', 'generic')
+            try:
+                pattern_func = decode_callable(encoded_pattern, 'aque_patterns')
+            except ValueError:
+                pattern_func = None
+            if pattern_func is None:
+                raise PatternMissingError('cannot decode pattern from %r' % encoded_pattern)
+
+            _local.task = self.task
+            _local.broker = self.broker
+
+            res = pattern_func(self.task)
+
+        except KeyboardInterrupt:
+            raise
+        
+        except Exception as e:
+            self.broker.mark_as_error(self.id, e)
+
+        else:
+            self.broker.mark_as_success(self.id, res)
+
+
+class ProcJob(BaseJob):
+
+    def __init__(self, worker, task):
+        super(ProcJob, self).__init__(worker, task)
+        self.finished = Event()
+
+    def start(self):
+
+        # We create a new set of pipes for standard IO, so that we may
+        # capture and/or manipulate them outselves.
+        o_rfd, o_wfd = os.pipe()
+        e_rfd, e_wfd = os.pipe()
+
+        self.redirections = {
+            o_rfd: sys.stdout,
+            e_rfd: sys.stderr,
+        }
+
+        # Start the actuall subprocess.
+        self.proc = multiprocessing.Process(target=self.target, args=(o_wfd, e_wfd))
+        self.proc.start()
+
+        log.log(5, 'proc %d for task %d started' % (self.proc.pid, self.id))
+
+        # Close our copies of the write end of the pipes.
+        os.close(o_wfd)
+        os.close(e_wfd)
+
+    def to_select(self):
+        rfds = self.redirections.keys()
+        rfds.append(self.finished.fileno())
+        return rfds, [], []
+
+    def on_select(self, rfds, wfds, xfds):
+
+        for rfd in rfds:
+            stream = self.redirections.get(rfd)
+            if stream:
+                x = os.read(rfd, 65536)
+                if x:
+                    stream.write(x)
+                else:
+                    os.close(rfd)
+                    del self.redirections[rfd]
+
+        if (not self.redirections or not rfds) and (not self.proc.is_alive() or self.finished.is_set()):
+            log.log(5, 'proc %d for task %d joined' % (self.proc.pid, self.id))
+            raise StopSelection()
+
+    def target(self, o_wfd, e_wfd):
+
+        self.broker.did_fork()
+
+        # Prep the stdio; close stdin and redirect stdout/err to the parent's
+        # preferred pipes. Everything should clean itself up.
+        os.close(0)
+        os.dup2(o_wfd, 1)
+        os.close(o_wfd)
+        os.dup2(e_wfd, 2)
+        os.close(e_wfd)
+
+        try:
+            self.execute()
+        finally:
+            self.finished.set()
 
 
 class Worker(object):
@@ -46,10 +136,9 @@ class Worker(object):
     def __init__(self, broker=None):
         self.broker = get_broker(broker)
 
+        self._event_loop = EventLoop()
         self._stopper = threading.Event()
-
-        self._running = []
-        self._finished_one = threading.Event()
+        self._cpus_left = CPU_COUNT
 
     def stop(self):
         self._stopper.set()
@@ -57,50 +146,58 @@ class Worker(object):
     def __del__(self):
         self.stop()
 
-    def _available_resources(self):
-        res = {
-            'cpu': CPU_COUNT,
-            'mem': MEM_TOTAL,
-        }
-        for task in self._running:
-            sub_resources(res, task.get('requirements') or {})
-        return res
-
     def run_one(self):
-        start_time = time.time()
-        for task in self.iter_open_tasks():
-            if self.broker.capture(task['id']):
-                try:
-                    exec_time = time.time()
-                    self.execute(task)
-                    return True
-                finally:
-                    end_time = time.time()
-                    logging.debug('found task %d in %.3fms; ran in %.3fms' % (
-                        task['id'],
-                        1000 * (exec_time - start_time), 
-                        1000 * (end_time - exec_time),
-                    ))
-                    self.broker.release(task['id'])
+        self._run(count=1, wait_for_more=False)
 
     def run_to_end(self):
-        self._stopper.clear()
-        while not self._stopper.is_set() and self.run_one():
-            pass
+        self._run(count=None, wait_for_more=False)
 
     def run_forever(self):
+        self._run(count=None, wait_for_more=True)
+
+    def _run(self, count, wait_for_more):
+
         self._stopper.clear()
         while not self._stopper.is_set():
-            if not self.run_one():
-                time.sleep(0.5)
 
-    def _run_in_thread(self, task):
-        try:
-            self.execute(task)
-        finally:
-            self.broker.release(task['id'])
-            self._running.remove(task)
-            self._finished_one.set()
+            # Check that we haven't spawned too many yet AND there is CPU to spare.
+            # TODO: wait until a reasonable amount of time has passed or we have
+            #       notification that there are new jobs.
+            task_iter = None
+            while (count is None or count > 0) and self._cpus_left > 0:
+
+                task_iter = task_iter or self.iter_open_tasks()
+                try:
+                    task = next(task_iter)
+                except StopIteration:
+                    break
+
+                # TODO: Make sure we can satisfy it.
+
+                if not self.broker.capture(task['id']):
+                    continue
+
+                job = (ProcJob if self.broker.can_fork else ThreadJob)(self, task)
+                job.start()
+                self._event_loop.add(job)
+
+                self._cpus_left -= 1
+                count = count - 1 if count is not None else None
+
+            finished = self._event_loop.process(timeout=1.0)
+
+            for obj in finished:
+                if isinstance(obj, BaseJob):
+                    self._cpus_left += 1
+                    self.broker.release(obj.id)
+                    job_did_finish = True
+
+            if not finished and not any(isinstance(x, BaseJob) for x in self._event_loop.selectables):
+                if wait_for_more:
+                    print 'waiting for more work...'
+                    time.sleep(1)
+                else:
+                    return
 
     def iter_open_tasks(self):
 
@@ -187,82 +284,9 @@ class Worker(object):
         
         # If we are allowed, we will run the work in a subprocess.
         if self.broker.can_fork:
-
-            # We create a new set of pipes for standard IO, so that we may
-            # capture and/or manipulate them outselves.
-            out_r, out_w = os.pipe()
-            err_r, err_w = os.pipe()
-
-            # Start the actuall subprocess.
-            proc = multiprocessing.Process(target=self._forked_execute, args=(
-                task, out_w, err_w,
-            ))
-            proc.start()
-            log.log(5, 'proc %d for task %d started' % (proc.pid, task['id']))
-
-            # Close our copies of the write end of the pipes.
-            os.close(out_w)
-            os.close(err_w)
-
-            # Wait for it to finish.
-            self._watch_fds(out_r, err_r)
-            proc.join()
-            log.log(5, 'proc %d for task %d joined' % (proc.pid, task['id']))
+            pass
 
         else:
             self._execute(task)
 
-    def _forked_execute(self, task, out_fd, err_fd):
 
-        self.broker.did_fork()
-
-        # Prep the stdio; close stdin and redirect stdout/err to the parent's
-        # preferred pipes. Everything should clean itself up.
-        os.close(0)
-        os.dup2(out_fd, 1)
-        os.dup2(err_fd, 2)
-
-        self._execute(task)
-
-    def _watch_fds(self, out_fd, err_fd):
-        fds = [out_fd, err_fd]
-        redirections = {
-            out_fd: sys.stdout,
-            err_fd: sys.stderr,
-        }
-        while fds:
-            rfds, _, _ = select.select(fds, [], [], 1.0)
-            for fd in rfds:
-                out = os.read(fd, 65536)
-                if out:
-                    fh = redirections[fd]
-                    fh.write(out)
-                    fh.flush()
-                else:
-                    os.close(fd)
-                    fds.remove(fd)
-
-    def _execute(self, task):
-        try:
-
-            encoded_pattern = task.get('pattern', 'generic')
-            try:
-                pattern_func = decode_callable(encoded_pattern, 'aque_patterns')
-            except ValueError:
-                pattern_func = None
-            if pattern_func is None:
-                raise PatternMissingError('cannot decode pattern from %r' % encoded_pattern)
-
-            _local.task = task
-            _local.broker = self.broker
-
-            res = pattern_func(task)
-
-        except KeyboardInterrupt:
-            raise
-        
-        except Exception as e:
-            self.broker.mark_as_error(task['id'], e)
-
-        else:
-            self.broker.mark_as_success(task['id'], res)

@@ -15,6 +15,7 @@ import psycopg2 as pg2
 from aque import execute
 from aque.brokers import get_broker
 from aque.commands.main import main
+from aque.eventloop import Event, EventLoop, StopSelection
 from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternIncompleteError, PatternMissingError
 from aque.futures import Future
 from aque.local import current_task, current_broker
