@@ -1,56 +1,17 @@
+
+- take proper account of cpu and memory resources
+- tasks should have "platform", "host", etc., requirements
+- tasks should make sure that user actually exists before taking the job,
+  and warning if the user does not exist
+
+- EventLoop.selectables -> active (add a stopped list)
+
 - Broker.capture -> Broker.acquire
 
 - Broker._emit_event(type, *args, **kwargs) and Broker._dispatch_event(type, *args, **kwargs)
     - immediately dispatches them locally (to self._handle_<event>)
     - uses postgres' notify feature
     - ignores events that come back to the same PID
-
-- worker could be written so that it has an event loop instead of having
-  a ton of threads. Scheduling new jobs could be during idle.
-
-  job = (ThreadJob or ProcJob)(self, task)
-  job.start()
-  self._eventloop.add(job)
-
-  ThreadJob for non-forking brokers
-    - has a selectable event to signal that it is done
-    - replaces sys.stdout and sys.stderr so that they can be captured
-  ProcJob for forking brokers
-    - has selectable event to signal that it is done
-    - can capture IO, and exposes that
-
-  EventLoop class handles all of these.
-
-    loop.add(selectable)
-    loop.remove(selectable)
-
-    loop.run_one(timeout=0) -> process one
-    loop.run_to_end(timeout=None)
-    loop.run_forever() -> when it runs out of selectables it waits for something
-      new to be added. This can be a global loop which runs for the benifit of
-      all brokers that are not attached to workers.
-
-    loop.stop() stops the loop if within a thread
-
-  Make a Selectable interface
-
-    job.to_select() -> (), (), ()
-      - raise StopSelection to be removed from the EventLoop
-    job.on_select(rfds, wfds, xfds)
-      - these may all be empty, indicating idle
-
-  should have a reasonable timeout so that the jobs are able to detect if they
-  have finished running without using the selectable interface (just in case)
-  it fails
-  
-  Use this for:
-    - IO for running tasks
-    - waiting for running tasks to finish
-    - stoppers
-    - scheduling new tasks
-    - broker IO (this isn't actually a great idea since it needs to run on its
-      own, OR broker.set_async_pool(worker.async_pool) can have it be taken over
-      by the worker
 
 - write a test that makes sure that multiple workers run a given task
   only once

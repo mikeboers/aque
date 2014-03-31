@@ -7,7 +7,7 @@ class StopSelection(Exception):
     pass
 
 
-class Event(object):
+class SelectableEvent(object):
     """Like ``threading.Event``, but ``select``able."""
 
     def __init__(self):
@@ -41,67 +41,47 @@ class Event(object):
         return self._rfd
 
 
-class SelectableQueue(object):
-
-    def __init__(self):
-        self._rfd, self._wfd = os.pipe()
-        self._objs = []
-
-    def __del__(self):
-        os.close(self._rfd)
-        os.close(self._wfd)
-
-    def put(self, obj):
-        self._objs.append(obj)
-        os.write(self._wfd, 'x')
-
-    def get(self, block=True):
-        if block:
-            os.read(self._rfd, 1)
-        try:
-            obj = self._objs.pop(0)
-        except IndexError:
-            raise Empty()
-        if not block:
-            os.read(self._rfd, 1)
-
-    def to_select(self):
-        return [self._rfd], (), ()
-
-    def on_select(self, *args):
-        pass
-
-
 class EventLoop(object):
 
     def __init__(self):
-        self.selectables = []
+        self.active = []
+        self.stopped = []
 
     def add(self, obj):
-        self.selectables.append(obj)
+        self.active.append(obj)
+
+    def stop(self, obj):
+        self.active.remove(obj)
+        self.stopped.append(obj)
 
     def remove(self, obj):
-        self.selectables.remove(obj)
+        try:
+            self.active.remove(obj)
+        except ValueError:
+            pass
+        try:
+            self.stopped.remove(obj)
+        except ValueError:
+            pass
 
     def process(self, timeout=None):
 
         to_select = [], [], []
-        done = []
 
         objs_and_fds = []
-        for obj in self.selectables[:]:
+        for obj in self.active[:]:
             try:
                 fds = obj.to_select()
             except StopSelection:
                 done.append(obj)
-                self.remove(obj)
+                self.stop(obj)
             else:
                 objs_and_fds.append((obj, fds))
                 for all_, new in zip(to_select, fds):
                     all_.extend(new)
 
         if not any(to_select):
-            return done
+            return
 
         selected = select(to_select[0], to_select[1], to_select[2], timeout)
         selected = [set(x) for x in selected]
@@ -111,14 +91,6 @@ class EventLoop(object):
             try:
                 obj.on_select(*fds)
             except StopSelection:
-                done.append(obj)
-                self.remove(obj)
+                self.stop(obj)
 
-        return done
-
-    def loop(self, timeout=None):
-        while self.selectables:
-            self.process(timeout)
-
-
-
+        return sum(len(x) for x in selected)

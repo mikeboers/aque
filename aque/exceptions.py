@@ -7,10 +7,6 @@ class DependencyResolutionError(RuntimeError):
     
     """
 
-class PatternIncompleteError(RuntimeError):
-    """Raised by :meth:`.Task.result` when the :ref:`pattern <patterns>` running
-    the task did not complete."""
-
 class PatternMissingError(RuntimeError):
     """Raised by :meth:`.Task.result` when the :ref:`pattern <patterns>` can't
     be identified."""

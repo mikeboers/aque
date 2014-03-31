@@ -13,11 +13,11 @@ import traceback
 import psutil
 
 from aque.brokers import get_broker
-from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternIncompleteError, PatternMissingError
+from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternMissingError
 from aque.futures import Future
 from aque.local import _local
 from aque.utils import decode_callable, encode_if_required, decode_if_possible, parse_bytes
-from aque.eventloop import Event, EventLoop, StopSelection
+from aque.eventloop import SelectableEvent, EventLoop, StopSelection
 
 
 log = logging.getLogger(__name__)
@@ -30,13 +30,16 @@ MEM_TOTAL = psutil.virtual_memory().total
 class BaseJob(object):
 
     def __init__(self, worker, task):
+
         self.worker = worker
         self.broker = worker.broker
         self.task = task
         self.id = task['id']
 
+        self.finished = SelectableEvent()
+
     def close(self):
-        pass
+        self.finished.close()
 
     def start(self):
         pass
@@ -66,25 +69,15 @@ class BaseJob(object):
         else:
             self.broker.mark_as_success(self.id, res)
 
+        finally:
+            self.finished.set()
+
 
 class ThreadJob(BaseJob):
 
-    def __init__(self, worker, task):
-        super(ThreadJob, self).__init__(worker, task)
-        self.finished = Event()
-
-    def close(self):
-        self.finished.close()
-
     def start(self):
-        self.thread = threading.Thread(target=self.target)
+        self.thread = threading.Thread(target=self.execute)
         self.thread.start()
-
-    def target(self):
-        try:
-            self.execute()
-        finally:
-            self.finished.set()
 
     def to_select(self):
         return [self.finished.fileno()], [], []
@@ -95,13 +88,6 @@ class ThreadJob(BaseJob):
 
 
 class ProcJob(BaseJob):
-
-    def __init__(self, worker, task):
-        super(ProcJob, self).__init__(worker, task)
-        self.finished = Event()
-
-    def close(self):
-        self.finished.close()
 
     def start(self):
 
@@ -158,10 +144,7 @@ class ProcJob(BaseJob):
         os.close(o_wfd)
         os.close(e_wfd)
 
-        try:
-            self.execute()
-        finally:
-            self.finished.set()
+        self.execute()
 
 
 class Worker(object):
@@ -217,16 +200,20 @@ class Worker(object):
                 self._cpus_left -= 1
                 count = count - 1 if count is not None else None
 
-            finished = self._event_loop.process(timeout=1.0)
+            self._event_loop.process(timeout=1.0)
 
-            for obj in finished:
+            # Deal with any jobs that just stopped.
+            job_just_finished = False
+            for obj in self._event_loop.stopped:
                 if isinstance(obj, BaseJob):
                     obj.close()
                     self._cpus_left += 1
                     self.broker.release(obj.id)
-                    job_did_finish = True
+                    job_just_finished = True
 
-            if not finished and not any(isinstance(x, BaseJob) for x in self._event_loop.selectables):
+            self._event_loop.stopped[:] = []
+
+            if not job_just_finished and not any(isinstance(x, BaseJob) for x in self._event_loop.active):
                 if wait_for_more:
                     print 'waiting for more work...'
                     time.sleep(1)
