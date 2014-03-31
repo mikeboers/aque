@@ -1,7 +1,3 @@
-import aque.brokers.memory
-import aque.queue
-import aque.worker
-
 
 class Task(object):
 
@@ -20,6 +16,11 @@ class Task(object):
         opts.update(kwargs)
 
         if opts.pop('local', False):
+
+            import aque.brokers.memory
+            import aque.queue
+            import aque.worker
+            
             broker = aque.brokers.memory.MemoryBroker()
             queue = aque.queue.Queue(broker=broker)
             future = queue.submit_ex(self.func, *args, **opts)
