@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 
@@ -13,7 +14,7 @@ from aque.commands.main import command, argument
     argument('-q', '--quiet', action='store_true'),
     argument('-w', '--wait', action='store_true'),
     argument('-t', '--timeout', type=float),
-    argument('command', nargs='+'),
+    argument('command', nargs=argparse.REMAINDER),
     help='schedule a shell command',
     aliases=['s', 'sub'],
 )

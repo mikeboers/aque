@@ -1,5 +1,6 @@
 from __future__ import division
 
+import argparse
 import itertools
 import sys
 import shlex
@@ -33,7 +34,7 @@ def tokenize_words(count):
     argument('-n', '--words', type=int),
     argument('-P', '--maxprocs', type=int),
     argument('-c', '--cpus', type=int),
-    argument('command', nargs='+'),
+    argument('command', nargs=argparse.REMAINDER),
     help='schedule a series of commands like xargs',
 )
 def xargs(args):

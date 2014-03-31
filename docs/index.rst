@@ -22,7 +22,7 @@ This has submitted the task with ID 123. You can retrieve the results with ``aqu
 
 The result of a command-line task is it's return code. In the near future we will also capture stdio, but you can do that manually::
 
-    $ aque submit -- bash -c 'echo hello from $AQUE_TID > result.txt'
+    $ aque submit bash -c 'echo hello from $AQUE_TID > result.txt'
     124
     $ # wait for it to finish...
     $ cat result.txt
@@ -30,7 +30,7 @@ The result of a command-line task is it's return code. In the near future we wil
 
 ``aque xargs`` is an xargs-like interface::
 
-    $ seq 1 20 | aque xargs -n1 -- bash -c 'echo $AQUE_TID says $1 >> result.txt' procname
+    $ seq 1 20 | aque xargs -n1 bash -c 'echo $AQUE_TID says $1 >> result.txt' procname
     145
     $ tail -f result.txt
     125 says 1
