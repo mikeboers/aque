@@ -12,9 +12,12 @@ from aque.worker import Worker
 )
 def worker(args):
     worker = Worker(args.broker, max_cpus=args.cpus)
-    if args.one:
-        worker.run_one()
-    elif args.to_end:
-        worker.run_to_end()
-    else:
-        worker.run_forever()
+    try:
+        if args.one:
+            worker.run_one()
+        elif args.to_end:
+            worker.run_to_end()
+        else:
+            worker.run_forever()
+    except KeyboardInterrupt:
+        pass
