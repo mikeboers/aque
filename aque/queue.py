@@ -36,6 +36,17 @@ class Queue(object):
         prototype['kwargs'] = kwargs or {}
         return self._submit(prototype, {}, {})
 
+    def _set_defaults(self, task, parent={}):
+        task['status']  = 'creating'
+        task['pattern'] = encode_callable(task.get('pattern', 'generic'))
+        task['func']    = encode_callable(task.get('func'))
+        task['args']    = tuple(task.get('args') or ())
+        task['kwargs']  = dict(task.get('kwargs') or {})
+        task.setdefault('cwd'     , str(parent.get('cwd', os.getcwd())))
+        task.setdefault('user'    , str(parent.get('user', _default_user.pw_name)))
+        task.setdefault('group'   , str(parent.get('group', _default_group.gr_name)))
+        task.setdefault('priority', int(parent.get('priority', 1000)))
+
     def _submit(self, task, parent, futures):
 
         # We need to linearize the submission. We pass around a mapping of
@@ -54,16 +65,7 @@ class Queue(object):
                 raise DependencyResolutionError('dependency cycle')
         futures[id_] = None
 
-        task['status']  = 'creating'
-        task['pattern'] = encode_callable(task.get('pattern', 'generic'))
-        task['func']    = encode_callable(task.get('func'))
-        task['args']    = tuple(task.get('args') or ())
-        task['kwargs']  = dict(task.get('kwargs') or {})
-
-        task.setdefault('cwd'     , str(parent.get('cwd', os.getcwd())))
-        task.setdefault('user'    , str(parent.get('user', _default_user.pw_name)))
-        task.setdefault('group'   , str(parent.get('group', _default_group.gr_name)))
-        task.setdefault('priority', int(parent.get('priority', 1000)))
+        self._set_defaults(task, parent)
 
         task['dependencies'] = [f.id for f in self._submit_dependencies(task, futures)]
         
