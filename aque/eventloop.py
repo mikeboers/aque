@@ -11,10 +11,19 @@ class Event(object):
     """Like ``threading.Event``, but ``select``able."""
 
     def __init__(self):
-        self._read_fd, self._write_fd = os.pipe()
+        self._rfd, self._wfd = os.pipe()
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        if self._rfd is not None:
+            os.close(self._rfd)
+            os.close(self._wfd)
+            self._rfd = None
 
     def wait(self, timeout=None):
-        r, _, _ = select([self._read_fd], [], [], timeout)
+        r, _, _ = select([self._rfd], [], [], timeout)
         return bool(r)
 
     def is_set(self):
@@ -22,18 +31,14 @@ class Event(object):
 
     def clear(self):
         if self.is_set():
-            os.read(self._read_fd, 1)
+            os.read(self._rfd, 1)
 
     def set(self):
         if not self.is_set():
-            os.write(self._write_fd, 'x')
+            os.write(self._wfd, 'x')
 
     def fileno(self):
-        return self._read_fd
-
-    def __del__(self):
-        os.close(self._read_fd)
-        os.close(self._write_fd)
+        return self._rfd
 
 
 class SelectableQueue(object):

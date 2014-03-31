@@ -35,6 +35,9 @@ class BaseJob(object):
         self.task = task
         self.id = task['id']
 
+    def close(self):
+        pass
+
     def start(self):
         pass
 
@@ -70,6 +73,9 @@ class ThreadJob(BaseJob):
         super(ThreadJob, self).__init__(worker, task)
         self.finished = Event()
 
+    def close(self):
+        self.finished.close()
+
     def start(self):
         self.thread = threading.Thread(target=self.target)
         self.thread.start()
@@ -93,6 +99,9 @@ class ProcJob(BaseJob):
     def __init__(self, worker, task):
         super(ProcJob, self).__init__(worker, task)
         self.finished = Event()
+
+    def close(self):
+        self.finished.close()
 
     def start(self):
 
@@ -145,8 +154,8 @@ class ProcJob(BaseJob):
         # preferred pipes. Everything should clean itself up.
         os.close(0)
         os.dup2(o_wfd, 1)
-        os.close(o_wfd)
         os.dup2(e_wfd, 2)
+        os.close(o_wfd)
         os.close(e_wfd)
 
         try:
@@ -157,12 +166,12 @@ class ProcJob(BaseJob):
 
 class Worker(object):
 
-    def __init__(self, broker=None):
+    def __init__(self, broker=None, max_cpus=None):
         self.broker = get_broker(broker)
 
         self._event_loop = EventLoop()
         self._stopper = threading.Event()
-        self._cpus_left = CPU_COUNT
+        self._cpus_left = max_cpus or CPU_COUNT
 
     def stop(self):
         self._stopper.set()
@@ -212,6 +221,7 @@ class Worker(object):
 
             for obj in finished:
                 if isinstance(obj, BaseJob):
+                    obj.close()
                     self._cpus_left += 1
                     self.broker.release(obj.id)
                     job_did_finish = True
