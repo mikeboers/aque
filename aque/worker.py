@@ -64,6 +64,30 @@ class BaseJob(object):
             self.broker.mark_as_success(self.id, res)
 
 
+class ThreadJob(BaseJob):
+
+    def __init__(self, worker, task):
+        super(ThreadJob, self).__init__(worker, task)
+        self.finished = Event()
+
+    def start(self):
+        self.thread = threading.Thread(target=self.target)
+        self.thread.start()
+
+    def target(self):
+        try:
+            self.execute()
+        finally:
+            self.finished.set()
+
+    def to_select(self):
+        return [self.finished.fileno()], [], []
+
+    def on_select(self, rfds, wfds, xfds):
+        if not self.thread.is_alive() or self.finished.is_set():
+            raise StopSelection()
+
+
 class ProcJob(BaseJob):
 
     def __init__(self, worker, task):
