@@ -32,8 +32,9 @@ setup(
         ],
         'aque_commands': [
             'init = aque.commands.init:init',
-            'status = aque.commands.status:status',
+            'output = aque.commands.output:output',
             'rm = aque.commands.rm:rm',
+            'status = aque.commands.status:status',
             'submit = aque.commands.submit:submit',
             'worker = aque.commands.worker:worker',
             'xargs = aque.commands.xargs:xargs',

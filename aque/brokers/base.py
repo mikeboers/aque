@@ -141,6 +141,9 @@ class Broker(object):
     def log_output(self, tid, fd, content):
         pass
 
+    def get_output(self, tid):
+        return []
+
     @abstractmethod
     def iter_tasks(self, **kwargs):
         """Get all tasks (restricted to the given fields).

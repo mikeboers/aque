@@ -314,6 +314,11 @@ class PostgresBroker(Broker):
             ])
         self.trigger('task_output_%d' % tid, fd, content)
 
+    def get_output(self, tids):
+        with self._cursor() as cur:
+            cur.execute('SELECT task_id, ctime, fd, content FROM task_output WHERE task_id = ANY(%s) ORDER BY ctime', [tids])
+            return [(task_id, ctime, fd, content.decode('string-escape')) for task_id, ctime, fd, content in cur]
+
     def iter_tasks(self, **kwargs):
 
         fields = kwargs.pop('fields', None)
