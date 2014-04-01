@@ -9,6 +9,9 @@ class Future(_base.Future):
         self.id = id
         self.broker = broker
 
+    def __repr__(self):
+        return '<Future at 0x%x for task %d>' % (id(self), self.id)
+    
     def iter(self):
         return self._iter(set())
 

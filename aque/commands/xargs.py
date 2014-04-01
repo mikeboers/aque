@@ -61,7 +61,9 @@ def xargs(args):
         cmd.extend(t for t in tokens if t is not None)
         prototypes.append(dict(pattern='shell', args=cmd, cpus=cpus))
 
-    futures = args.queue.submit_many(prototypes)
-    future = args.queue.submit_ex(pattern=None, dependencies=futures)
+    future_map = args.queue.submit_many(prototypes)
+    if args.verbose:
+        print '\n'.join(str(tid) for tid in sorted(f.id for f in future_map.itervalues()))
+    future = args.queue.submit_ex(pattern=None, dependencies=future_map.values())
 
     print future.id

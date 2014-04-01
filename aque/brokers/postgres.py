@@ -145,12 +145,17 @@ class PostgresBroker(Broker):
 
     def create_many(self, prototypes):
         fields, encoded = self._encode_many(prototypes)
-        params = [[e[f] for f in fields] for e in encoded]
         with self._cursor() as cur:
-            cur.execute('''INSERT INTO tasks (%s) VALUES %s RETURNING id''' % (
-                ', '.join('"%s"' % f for f in fields),
-                ', '.join('(%s)' % cur.mogrify(','.join(['%s'] * len(p)), p) for p in params)
-            ))
+            params = [[e[f] for f in fields] for e in encoded]
+            fields = ', '.join('"%s"' % f for f in fields)
+            params_pattern = ','.join(["%s"] * len(params[0]))
+            params = [cur.mogrify(params_pattern, p) for p in params]
+            params = ', '.join('(%s)' % m for m in params)
+            try:
+                cur.execute('''INSERT INTO tasks (%s) VALUES %s RETURNING id''' % (fields, params))
+            except:
+                log.exception(repr(prototypes))
+                raise
             tids = [row[0] for row in cur]
         return [self.get_future(tid) for tid in tids]
 

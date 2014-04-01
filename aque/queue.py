@@ -1,6 +1,7 @@
 import functools
 import grp
 import itertools
+import logging
 import os
 import pwd
 
@@ -11,6 +12,9 @@ from aque.task import Task
 from aque.utils import encode_callable
 
 from redis import Redis
+
+
+log = logging.getLogger(__name__)
 
 
 _default_user = pwd.getpwuid(os.getuid())
@@ -45,13 +49,14 @@ class Queue(object):
         prototype['func'] = func
         prototype['args'] = args or ()
         prototype['kwargs'] = kwargs or {}
-        return self._submit(prototype, {}, {})
+        return self.submit_many([prototype])[id(prototype)]
 
     def submit_many(self, prototypes):
 
         # First, we must flatten out the list of prototypes, stripping
         # dependencies but keeping track of them.
         to_process = list(self._flatten_prototypes(prototypes))
+
         futures_by_id = {}
         while to_process:
 
@@ -70,18 +75,22 @@ class Queue(object):
             to_process = unsatisfied
 
             if not satisfied:
+                for i, proto in enumerate(to_process):
+                    log.debug('%d/%d %r' % (i + 1, len(to_process), proto))
+                for id_, future in sorted(futures_by_id.iteritems()):
+                    log.debug('%d -> %d' % (id_, future.id))
                 raise RuntimeError('could not satisfy any prototypes')
 
             for proto in satisfied:
                 proto['dependencies'] = [f.id for f in proto['dependencies']]
 
             futures = self.broker.create_many(satisfied)
-            for f in futures:
-                futures_by_id[f.id] = f
+            for p, f in zip(satisfied, futures):
+                futures_by_id[id(p)] = f
 
         self.broker.mark_as_pending([f.id for f in futures_by_id.itervalues()])
 
-        return sorted(futures_by_id.values(), key=lambda f: f.id)
+        return futures_by_id
 
     def _flatten_prototypes(self, prototypes, parent={}, recursion_tracker=None):
 
@@ -116,44 +125,4 @@ class Queue(object):
             recursion_tracker[pid] = False
             proto['dependencies'] = deps
             yield proto
-
-
-    def _submit(self, task, parent, futures):
-
-        # We need to linearize the submission. We pass around a mapping of
-        # object ids to their futures. If the id is in the dict but maps to None
-        # then we are in progress of creating that future, and there must be
-        # a dependency error.
-        id_ = id(task)
-        try:
-            future = futures[id_]
-        except KeyError:
-            pass
-        else:
-            if future:
-                return future
-            else:
-                raise DependencyResolutionError('dependency cycle')
-        futures[id_] = None
-
-        self._set_defaults(task, parent)
-
-        task['dependencies'] = [f.id for f in self._submit_dependencies(task, futures)]
-        
-        future = self.broker.create(task)
-        self.broker.mark_as_pending(future.id)
-
-        futures[id_] = future
-        return future
-
-    def _submit_dependencies(self, parent, futures):
-        for task in parent.get('dependencies', ()):
-            if isinstance(task, Future):
-                yield task
-            elif isinstance(task, dict):
-                yield self._submit(task, parent, futures)
-            else:
-                yield self.broker.get_future(task)
-
-
 

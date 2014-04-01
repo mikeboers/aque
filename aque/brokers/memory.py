@@ -25,12 +25,18 @@ class MemoryBroker(Broker):
         self._init()
 
     def create(self, prototype=None):
+        return self.create_many([prototype])[0]
+
+    def create_many(self, prototypes):
+        futures = []
         with self._id_lock:
-            self._id_counter += 1
-            tid = self._id_counter
-        self._tasks[tid] = dict(prototype or {})
-        self._tasks[tid]['id'] = tid
-        return self.get_future(tid)
+            for proto in prototypes:
+                self._id_counter += 1
+                tid = self._id_counter
+                self._tasks[tid] = dict(proto or {})
+                self._tasks[tid]['id'] = tid
+                futures.append(self.get_future(tid))
+        return futures
 
     def fetch(self, tid):
         return self._tasks[tid]
@@ -41,8 +47,11 @@ class MemoryBroker(Broker):
     def delete(self, tid):
         self._tasks.pop(tid, None)
 
-    def set_status_and_notify(self, tid, status):
-        self.update(tid, {'status': status})
+    def set_status_and_notify(self, tids, status):
+        if not isinstance(tids, (tuple, list)):
+            tids = [tids]
+        for tid in tids:
+            self.update(tid, {'status': status})
 
     def mark_as_success(self, tid, result):
         self.update(tid, {'status': 'success', 'result': result})
