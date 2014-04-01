@@ -261,6 +261,11 @@ class Worker(object):
             except StopIteration:
                 break
 
+            # Shortcut for grouping tasks.
+            if task.get('pattern', 'xxx') is None:
+                self.broker.mark_as_success(task['id'], None)
+                continue
+
             # Don't consider anything we are already working on.
             if any(task['id'] == job.id for job in self._event_loop.active):
                 continue
@@ -291,6 +296,8 @@ class Worker(object):
         while not self._stopper.is_set():
 
             count = self._spawn_jobs(count)
+
+            # TODO: longer timeout once we listen to pending task events
             self._event_loop.process(timeout=1.0)
 
             # Deal with any jobs that just stopped.
@@ -305,6 +312,7 @@ class Worker(object):
 
             if not job_just_finished and not any(isinstance(x, BaseJob) for x in self._event_loop.active):
                 if wait_for_more:
+                    # XXX: don't need this once the above timeout is higher
                     log.info('waiting for more work...')
                     time.sleep(1)
                 else:
@@ -380,24 +388,3 @@ class Worker(object):
                 continue
 
             yield self.broker.fetch(task['id'])
-
-    def execute(self, task):
-        """Find the pattern handler, call it, and catch errors.
-
-        "dependencies" and "children" of the task MUST be a sequence of IDs.
-
-        """
-
-        # Shortcut for grouping tasks.
-        if task.get('pattern', 'xxx') is None:
-            self.broker.mark_as_success(task['id'], None)
-            return
-        
-        # If we are allowed, we will run the work in a subprocess.
-        if self.broker.can_fork:
-            pass
-
-        else:
-            self._execute(task)
-
-

@@ -16,7 +16,8 @@ class TestWorkerBasics(BrokerTestCase):
 
         def open_names():
             open_tasks = list(self.worker.iter_open_tasks())
-            open_names = set(t['name'] for t in open_tasks)
+            open_names = (t['name'] for t in open_tasks)
+            open_names = set(n for n in open_names if len(n) == 1)
             return open_names
 
         self.assertEqual(open_names(), set(['b', 'c']))
