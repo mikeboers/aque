@@ -328,8 +328,10 @@ class PostgresBroker(Broker):
     def capture(self, tid):
 
         with self._cursor() as cur:
-            cur.execute('SELECT last_active FROM tasks WHERE id = %s FOR UPDATE', [tid])
-            last_active = next(cur, (None, ))[0]
+            cur.execute('SELECT status, last_active FROM tasks WHERE id = %s FOR UPDATE', [tid])
+            status, last_active = next(cur, (None, None))
+            if status != 'pending':
+                return
 
             cur.execute('SELECT localtimestamp')
             current_time = next(cur)[0]
