@@ -272,7 +272,7 @@ class Worker(object):
             if not self._can_currently_satisfy_requirements(task, cpus, memory):
                 continue
 
-            if not self.broker.capture(task['id']):
+            if not self.broker.acquire(task['id']):
                 continue
 
             job = (ProcJob if self.broker.can_fork else ThreadJob)(self, task)

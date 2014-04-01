@@ -89,7 +89,7 @@ class Broker(object):
     
     # MID-LEVEL TASK API
 
-    def capture(self, tid):
+    def acquire(self, tid):
         """Capture the task, and keep a heartbeat running."""
         return True
 

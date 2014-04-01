@@ -325,25 +325,29 @@ class PostgresBroker(Broker):
                 cur.execute('SELECT result FROM tasks WHERE id = %s', [payload['id']])
                 future.set_exception(self._decode('result', next(cur)[0]))
 
-    def capture(self, tid):
+    def acquire(self, tid):
 
         with self._cursor() as cur:
+
             cur.execute('SELECT status, last_active FROM tasks WHERE id = %s FOR UPDATE', [tid])
             status, last_active = next(cur, (None, None))
+
             if status != 'pending':
-                return
+                log.debug('capturing task %d failed; currently %s' % (tid, status))
+                return False
 
             cur.execute('SELECT localtimestamp')
             current_time = next(cur)[0]
 
             age = (current_time - last_active).total_seconds() if last_active else None
-            log.debug('task %d %s' % (tid, 'is %ss old' % age if age is not None else 'is fresh'))
-
-            if age is None or age > 30:
-                cur.execute('UPDATE tasks SET last_active = %s WHERE id = %s', [current_time, tid])
-            else:
+            if age is not None and age <= 30:
+                log.debug('capturing task %d failed; currently %ss old' % (tid, age))
                 return
 
+            cur.execute('UPDATE tasks SET last_active = %s WHERE id = %s', [current_time, tid])
+
+        # Spin up the heartbeat thread.
+        # TODO: add this to the event loop, somehow.
         with self._heartbeat_lock:
             self._captured_tids.append(tid)
             if not self._heartbeat_thread:
