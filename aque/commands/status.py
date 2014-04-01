@@ -1,12 +1,16 @@
 import csv
+import os
 import sys
 
 from aque.commands.main import command, argument
 
 
 @command(
+    argument('-a', '--all', action='store_true'),
+    argument('-f', '--filter'),
+    argument('-c', '--csv'),
+    argument('-p', '--pattern', default='{id:5d} {status:7s} {pattern:7s} "{name}" {func_signature} -> {result!r}'),
     argument('tid', nargs='*'),
-    argument('-f', '--csv'),
     help='task status',
     aliases=['ps'],
 )
@@ -15,7 +19,10 @@ def status(args):
     if args.tid:
         tasks = [args.broker.fetch(tid) for tid in args.tid]
     else:
-        tasks = list(args.broker.iter_tasks())
+        filter_ = {}
+        if not args.all:
+            filter_['user'] = os.getlogin()
+        tasks = list(args.broker.iter_tasks(**filter_))
         tasks.sort(key=lambda t: t['id'])
 
     if args.csv:
@@ -23,7 +30,15 @@ def status(args):
         writer = csv.writer(sys.stdout)
         writer.writerow(fields)
 
+    if args.filter:
+        filter_ = compile(args.filter, '<--filter>', 'eval')
+    else:
+        filter_ = None
+
     for task in tasks:
+
+        if filter_ and not eval(filter_, {}, task):
+            continue
 
         if args.csv:
             data = [str(task.get(f)) for f in fields]
@@ -35,7 +50,7 @@ def status(args):
             arg_specs.append(repr(arg))
         for k, v in sorted((task.get('kwargs') or {}).iteritems()):
             arg_specs.append("%s=%r" % (k, v))
-        
+
         func = task.get('func')
         try:
             func_name = '%s:%s' % (func.__module__, func.__name__)
@@ -44,15 +59,10 @@ def status(args):
 
         func_spec = '%s(%s)' % (func_name, ', '.join(arg_specs))
 
-        parts = [
-            '%5d' % task['id'],
-            '%7s' % task['status'],
-            '%7s' % (task['pattern'] or '-'),
-        ]
-        if task.get('name'):
-            parts.append(repr(task['name']))
-        parts.append(func_spec)
-        if task['status'] in ('success', 'error'):
-            parts.append('-> %r' % (task['result'], ))
+        task['func_name'] = func_name
+        task['func_signature'] = func_spec
+        task['args_string'] = ', '.join(arg_specs)
+        task['pattern'] = task['pattern'] or '-'
+        task['name'] = task['name'] or ''
 
-        print ' '.join(parts)
+        print args.pattern.format(**task)
