@@ -281,7 +281,7 @@ class PostgresBroker(Broker):
 
         if kwargs:
             items = sorted(kwargs.iteritems())
-            clause = 'WHERE ' + ' AND '.join('%s = %%s' % k for k, v in items)
+            clause = 'WHERE ' + ' AND '.join('"%s" = %%s' % k for k, v in items)
             params = [v for k, v in items]
         else:
             clause = ''
