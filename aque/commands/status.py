@@ -9,7 +9,7 @@ from aque.commands.main import command, argument
     argument('-a', '--all', action='store_true'),
     argument('-f', '--filter'),
     argument('-c', '--csv'),
-    argument('-p', '--pattern', default='{id:5d} {status:7s} {pattern:7s} "{name}" {func_signature} -> {result!r}'),
+    argument('-p', '--pattern', default='{id:5d} {user:9s} {status:7s} {pattern:7s} "{name}" {func_signature} -> {result!r}'),
     argument('tid', nargs='*'),
     help='task status',
     aliases=['ps'],
@@ -37,6 +37,8 @@ def status(args):
 
     for task in tasks:
 
+        # This isn't normally good form, but since the implementation of this
+        # thing allows you to do bad stuff, this isn't an added security risk.
         if filter_ and not eval(filter_, {}, task):
             continue
 
