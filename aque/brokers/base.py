@@ -30,6 +30,7 @@ class Broker(object):
 
     def __init__(self):
         self.futures = {}
+        self._bound_callbacks = {}
 
     # BROKER API
 
@@ -95,6 +96,23 @@ class Broker(object):
 
     def release(self, tid):
         """Release a task that we are done with."""
+
+    # MID-lEVEL EVENT API
+
+    def bind(self, event, callback):
+        """Schedule a function to be called whenever a given event happens."""
+        self._bound_callbacks.setdefault(event, []).append(callback)
+
+    def unbind(self, event, callback):
+        """Unschedule a function from a given event."""
+        self._bound_callbacks[event].remove(callback)
+
+    def _iter_bound_callbacks(self, event):
+        return self._bound_callbacks.get(event, ())
+    
+    @abstractmethod
+    def trigger(self, event, *args, **kwargs):
+        """Trigger an event; scheduled functions will be called with given args."""
 
     # HIGH-LEVEL TASK API
 

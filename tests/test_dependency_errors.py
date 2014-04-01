@@ -5,7 +5,7 @@ class TestDependencyResolutionErrors(BrokerTestCase):
 
     def test_missing_dependency(self):
 
-        f = self.queue.submit_ex(tuple, dependencies=[123456])
+        f = self.queue.submit_ex(tuple, dependencies=[1234567890])
         self.worker.run_to_end()
         
         self.assertRaises(DependencyResolutionError, f.result, 0.1)

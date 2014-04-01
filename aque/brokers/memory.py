@@ -1,7 +1,11 @@
+import logging
 import threading
 
 import aque.utils as utils
 from .base import Broker
+
+
+log = logging.getLogger(__name__)
 
 
 class MemoryBroker(Broker):
@@ -13,6 +17,7 @@ class MemoryBroker(Broker):
         super(MemoryBroker, self).__init__()
         self._id_lock = threading.Lock()
         self._init()
+        self._binds = {}
 
     def _init(self):
         self._tasks = {}
@@ -47,20 +52,30 @@ class MemoryBroker(Broker):
     def delete(self, tid):
         self._tasks.pop(tid, None)
 
+    def trigger(self, event, *args, **kwargs):
+        for callback in self._iter_bound_callbacks(event):
+            try:
+                callback(*args, **kwargs)
+            except StandardError:
+                log.exception('error while notifying %s with %r %r %r' % (event, callback, args, kwargs))
+
     def set_status_and_notify(self, tids, status):
         if not isinstance(tids, (tuple, list)):
             tids = [tids]
         for tid in tids:
             self.update(tid, {'status': status})
+            self.trigger('task_status', tid, status)
 
     def mark_as_success(self, tid, result):
         self.update(tid, {'status': 'success', 'result': result})
+        self.trigger('task_status', tid, 'success')
         future = self.futures.get(tid)
         if future:
             future.set_result(result)
 
     def mark_as_error(self, tid, exception):
         self.update(tid, {'status': 'error', 'result': exception})
+        self.trigger('task_status', tid, 'error')
         future = self.futures.get(tid)
         if future:
             future.set_exception(exception)

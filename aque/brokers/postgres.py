@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import json
 import logging
+import os
 import pickle
 import select
 import threading
@@ -38,12 +39,14 @@ class PostgresBroker(Broker):
 
         self._reflect()
 
-        self._notify_lock = threading.Lock()
-        self._notify_thread = None
+        self._trigger_lock = threading.Lock()
+        self._trigger_thread = None
 
         self._heartbeat_lock = threading.Lock()
         self._heartbeat_thread = None
         self._captured_tids = []
+
+        self.bind('task_status', self._on_task_status)
 
     def _open_pool(self):
         return pg.pool.ThreadedConnectionPool(0, 4 * psutil.cpu_count(), **self._kwargs)
@@ -57,12 +60,12 @@ class PostgresBroker(Broker):
     def close(self):
         pass
     
-    def _notify_start(self):
-        with self._notify_lock:
-            if not self._notify_thread:
-                self._notify_thread = threading.Thread(target=self._notify_target)
-                self._notify_thread.daemon=True
-                self._notify_thread.start()
+    def _trigger_start(self):
+        with self._trigger_lock:
+            if not self._trigger_thread:
+                self._trigger_thread = threading.Thread(target=self._trigger_target)
+                self._trigger_thread.daemon=True
+                self._trigger_thread.start()
 
     @contextlib.contextmanager
     def _connect(self):
@@ -137,7 +140,7 @@ class PostgresBroker(Broker):
 
     def get_future(self, tid):
         future = super(PostgresBroker, self).get_future(tid)
-        self._notify_start()
+        self._trigger_start()
         return future
 
     def create(self, prototype=None):
@@ -242,15 +245,19 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('DELETE FROM tasks WHERE id = ANY(%s)', [list(tids)])
     
+    def trigger(self, event, *args, **kwargs):
+        with self._cursor() as cur:
+            self._notify_event(cur, event, args, kwargs)
+        self._dispatch_event(event, args, kwargs)
+
+    def _notify_event(self, cur, event, args, kwargs):
+        cur.execute('NOTIFY "%s", %%s' % event, [json.dumps([args, kwargs])])
+
     def set_status_and_notify(self, tids, status):
-        if isinstance(tids, int):
-            tids = [tids]
+        tids = [tids] if isinstance(tids, int) else list(tids)
         with self._cursor() as cur:
             cur.execute('''UPDATE tasks SET status = %s WHERE id = ANY(%s)''', (status, tids))
-            cur.executemany('''NOTIFY task_status, %s''', [[json.dumps({
-                'id': tid,
-                'status': status,
-            })] for tid in tids])
+        self.trigger('task_status', tids, status)
 
     def mark_as_success(self, tid, result):
         with self._cursor() as cur:
@@ -258,10 +265,7 @@ class PostgresBroker(Broker):
                 '''UPDATE tasks SET status = 'success', result = %s WHERE id = %s''',
                 [self._encode('result', result), tid],
             )
-            cur.execute('''NOTIFY task_status, %s''', [json.dumps({
-                'id': tid,
-                'status': 'success',
-            })])
+        self.trigger('task_status', [tid], 'success')
 
     def mark_as_error(self, tid, exception):
         with self._cursor() as cur:
@@ -269,10 +273,7 @@ class PostgresBroker(Broker):
                 '''UPDATE tasks SET status = 'error', result = %s WHERE id = %s''',
                 [self._encode('result', exception), tid],
             )
-            cur.execute('''NOTIFY task_status, %s''', [json.dumps({
-                'id': tid,
-                'status': 'error',
-            })])
+        self.trigger('task_status', [tid], 'error')
 
     def iter_tasks(self, **kwargs):
 
@@ -297,7 +298,8 @@ class PostgresBroker(Broker):
         for row in rows:
             yield self._decode_task(cur, row)
 
-    def _notify_target(self):
+    def _trigger_target(self):
+
         with self._connect() as conn:
 
             cur = conn.cursor()
@@ -309,21 +311,41 @@ class PostgresBroker(Broker):
                 if conn in r:
                     conn.poll()
                     while conn.notifies:
-                        self._dispatch_notification(conn.notifies.pop())
+                        message = conn.notifies.pop()
+                        if message.pid == os.getpid():
+                            continue
+                        args, kwargs = json.loads(message.payload)
+                        self._dispatch_event(message.channel, args, kwargs)
 
-    def _dispatch_notification(self, message):
-        payload = json.loads(message.payload)
-        future = self.futures.get(payload['id'])
-        if not future:
+    def _dispatch_event(self, event, args, kwargs):
+        for callback in self._iter_bound_callbacks(event):
+            try:
+                log.debug('dispatching %s to %s(*%r, **%r)' % (event, utils.encode_callable(callback), args, kwargs))
+                callback(*args, **kwargs)
+            except StandardError:
+                log.exception('error during event callback')
+
+    def _on_task_status(self, tids, status):
+
+        if status not in ('success', 'error'):
             return
-        if payload['status'] == 'success':
-            with self._cursor() as cur:
-                cur.execute('SELECT result FROM tasks WHERE id = %s', [payload['id']])
-                future.set_result(self._decode('result', next(cur)[0]))
-        elif payload['status'] == 'error':
-            with self._cursor() as cur:
-                cur.execute('SELECT result FROM tasks WHERE id = %s', [payload['id']])
-                future.set_exception(self._decode('result', next(cur)[0]))
+
+        futures = [self.futures.get(tid) for tid in tids]
+        futures = filter(None, futures)
+        if not futures:
+            return
+
+        with self._cursor() as cur:
+            cur.execute('SELECT id, result FROM tasks WHERE id = ANY(%s)', [[f.id for f in futures]])
+            results = dict((id_, self._decode('result', res)) for id_, res in cur)
+
+        for future in futures:
+            log.debug('dispatching %s %r to %s' % (status, results[future.id], future.id))
+            if status == 'success':
+                future.set_result(results[future.id])
+            else:
+                future.set_exception(results[future.id])
+
 
     def acquire(self, tid):
 

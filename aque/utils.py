@@ -14,75 +14,21 @@ import types
 log = logging.getLogger(__name__)
 
 
-def encode_if_required(value):
-    """Serialize a value if it isn't a string.
-
-    Will use JSON if it can, falling back to pickling.
-
-    """
-    if isinstance(value, basestring):
-        return value
-    else:
-        try:
-            return 'json:' + json.dumps(value, separators=(',', ':'))
-        except TypeError:
-            return 'pickle:' + pickle.dumps(value, protocol=-1)
-
-
-def decode_if_possible(encoded):
-    """Unserialize a value if possible.
-
-    Tries pickle.dumps, then json.dumps, then returns the original
-
-    """
-
-    if not isinstance(encoded, basestring):
-        return encoded
-
-    try:
-        if encoded.startswith('pickle:'):
-            return pickle.loads(encoded[7:])
-    except PickleError:
-        pass
-    except (AttributeError, ImportError, TypeError):
-        log.warning('pickle is no longer valid', exc_info=True)
-    except:
-        log.exception('pickle.dumps error from %r' % encoded)
-
-    try:
-        if encoded.startswith('json:'):
-            return json.loads(encoded[5:])
-    except ValueError:
-        pass
-
-    return encoded
-
-
-def encode_values_when_required(input_):
-    """JSON encode the values of a dictionary when they are not strings.
-
-    :return: A new dictionary.
-
-    """
-
-    return dict((k, encode_if_required(v)) for k, v in input_.iteritems())
-
-
-def decode_values_when_possible(input_):
-    """JSON decode the values of a dictionary when they are valid JSON.
-
-    :return: A new dictionary.
-
-    """
-
-    return dict((k, decode_if_possible(v)) for k, v in input_.iteritems())
-
-
 def encode_callable(input_):
+
     if input_ is None:
         return None
+
     if isinstance(input_, basestring):
         return input_
+
+    # Methods.
+    try:
+        return '%s:%s.%s' % (input_.__module__, input_.im_class.__name__, input_.__name__)
+    except AttributeError:
+        pass
+
+    # Functions.
     try:
         return '%s:%s' % (input_.__module__, input_.__name__)
     except AttributeError:

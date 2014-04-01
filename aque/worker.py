@@ -18,7 +18,7 @@ from aque.brokers import get_broker
 from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternMissingError
 from aque.futures import Future
 from aque.local import _local
-from aque.utils import decode_callable, encode_if_required, decode_if_possible, parse_bytes
+from aque.utils import decode_callable, parse_bytes
 from aque.eventloop import SelectableEvent, EventLoop, StopSelection
 
 
