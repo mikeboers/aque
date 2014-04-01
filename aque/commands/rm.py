@@ -1,3 +1,4 @@
+import os
 import sys
 
 from aque.commands.main import command, argument
@@ -9,7 +10,7 @@ from aque.queue import Queue
     argument('-s', '--success', action='store_true'),
     argument('-c', '--complete', action='store_true'),
     argument('-a', '--all', action='store_true'),
-    # argument('-n', '--dry-run', action='store_true'),
+    argument('-x', '--all-users', action='store_true'),
     argument('id', nargs='*'),
     help='remove tasks',
 )
@@ -29,9 +30,13 @@ def rm(args):
     if not statuses and not args.id:
         exit(1)
 
+    base_filter = {}
+    if not args.all_users:
+        base_filter['user'] = os.getlogin()
+
     to_delete = [int(x) for x in args.id]
     for status in statuses:
-        filter_ = {}
+        filter_ = base_filter.copy()
         if status:
             filter_['status'] = status
         for task in args.broker.iter_tasks(**filter_):
