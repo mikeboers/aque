@@ -261,6 +261,10 @@ class Worker(object):
             except StopIteration:
                 break
 
+            # Don't consider anything we are already working on.
+            if any(task['id'] == job.id for job in self._event_loop.active):
+                continue
+
             # TODO: track these so that we don't bother looking at the same
             # tasks over and over.
             if not self._can_ever_satisfy_requirements(task):
@@ -301,7 +305,7 @@ class Worker(object):
 
             if not job_just_finished and not any(isinstance(x, BaseJob) for x in self._event_loop.active):
                 if wait_for_more:
-                    print 'waiting for more work...'
+                    log.info('waiting for more work...')
                     time.sleep(1)
                 else:
                     return

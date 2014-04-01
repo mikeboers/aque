@@ -1,8 +1,6 @@
 
-- Queue.submit_many(prototypes)
-  
-  look at a list of prototypes, flatten the full list of dependencies, keep
-  submitting those which do not have any outstanding dependences
+- setproctitle -> https://code.google.com/p/py-setproctitle/
+  for workers and slaves
 
 - write better usage docs
 

@@ -334,7 +334,10 @@ class PostgresBroker(Broker):
             cur.execute('SELECT localtimestamp')
             current_time = next(cur)[0]
 
-            if not last_active or current_time - last_active > datetime.timedelta(seconds=30):
+            age = (current_time - last_active).total_seconds() if last_active else None
+            log.debug('task %d %s' % (tid, 'is %ss old' % age if age is not None else 'is fresh'))
+
+            if age is None or age > 30:
                 cur.execute('UPDATE tasks SET last_active = %s WHERE id = %s', [current_time, tid])
             else:
                 return
