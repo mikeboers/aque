@@ -39,6 +39,7 @@ class PostgresBroker(Broker):
 
         self._reflect()
 
+        self._notify_conn = None
         self._trigger_lock = threading.Lock()
         self._trigger_thread = None
 
@@ -126,6 +127,14 @@ class PostgresBroker(Broker):
 
             )''')
 
+            cur.execute('''CREATE TABLE IF NOT EXISTS task_output (
+                task_id SERIAL NOT NULL,
+                ctime TIMESTAMP NOT NULL DEFAULT localtimestamp,
+                fd SMALLINT NOT NULL,
+                content TEXT NOT NULL
+            )''')
+            # TODO: create an index
+
     def _reflect(self):
         with self._cursor() as cur:
             # Determine what rows we actually have.
@@ -137,6 +146,7 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('''DROP TABLE IF EXISTS dependencies''')
             cur.execute('''DROP TABLE IF EXISTS tasks''')
+            cur.execute('''DROP TABLE IF EXISTS task_output''')
 
     def get_future(self, tid):
         future = super(PostgresBroker, self).get_future(tid)
@@ -242,16 +252,36 @@ class PostgresBroker(Broker):
         self.delete_many([tid])
 
     def delete_many(self, tids):
+        tids = list(tids)
         with self._cursor() as cur:
-            cur.execute('DELETE FROM tasks WHERE id = ANY(%s)', [list(tids)])
+            cur.execute('DELETE FROM tasks WHERE id = ANY(%s)', [tids])
+            cur.execute('DELETE FROM task_output WHERE task_id = ANY(%s)', [tids])
     
-    def trigger(self, event, *args, **kwargs):
-        with self._cursor() as cur:
-            self._notify_event(cur, event, args, kwargs)
-        self._dispatch_event(event, args, kwargs)
+    def bind(self, event, callback):
+        self._bound_callbacks.setdefault(event, []).append(callback)
+        if self._notify_conn and len(self._bound_callbacks[event]) == 1:
+            cur = self._notify_connection.cursor()
+            cur.execute('LISTEN "%s"' % event)
+            self._notify_connection.commit()
 
-    def _notify_event(self, cur, event, args, kwargs):
-        cur.execute('NOTIFY "%s", %%s' % event, [json.dumps([args, kwargs])])
+    def unbind(self, event, callback):
+        self._bound_callbacks[event].remove(callback)
+        if self._notify_conn and not self._bound_callbacks[event]:
+            cur = self._notify_connection.cursor()
+            cur.execute('UNLISTEN "%s"' % event)
+            self._notify_connection.commit()
+
+    def trigger(self, events, *args, **kwargs):
+        events = [events] if isinstance(events, basestring) else list(events)
+        with self._cursor() as cur:
+            self._notify_event(cur, events, args, kwargs)
+        for e in events:
+            self._dispatch_event(e, args, kwargs)
+
+    def _notify_event(self, cur, events, args, kwargs):
+        payload = json.dumps([args, kwargs])
+        for e in events:
+            cur.execute('NOTIFY "%s", %%s' % e, [payload])
 
     def set_status_and_notify(self, tids, status):
         tids = [tids] if isinstance(tids, int) else list(tids)
@@ -274,6 +304,15 @@ class PostgresBroker(Broker):
                 [self._encode('result', exception), tid],
             )
         self.trigger('task_status', [tid], 'error')
+
+    def log_output(self, tid, fd, content):
+        with self._cursor() as cur:
+            cur.execute('INSERT INTO task_output (task_id, fd, content) VALUES (%s, %s, %s)', [
+                tid,
+                fd,
+                content.encode('string-escape'),
+            ])
+        self.trigger('task_output_%d' % tid, fd, content)
 
     def iter_tasks(self, **kwargs):
 
@@ -300,22 +339,23 @@ class PostgresBroker(Broker):
 
     def _trigger_target(self):
 
-        with self._connect() as conn:
+        self._notify_conn = conn = self._pool.getconn()
+        cur = conn.cursor()
+        for event in self._bound_callbacks:
+            cur.execute('LISTEN "%s"' % event)
+        conn.commit()
 
-            cur = conn.cursor()
-            cur.execute('LISTEN task_status')
-            conn.commit()
-
-            while True:
-                r, _, _ = select.select([conn], [], [], 60)
-                if conn in r:
-                    conn.poll()
-                    while conn.notifies:
-                        message = conn.notifies.pop()
-                        if message.pid == os.getpid():
-                            continue
-                        args, kwargs = json.loads(message.payload)
-                        self._dispatch_event(message.channel, args, kwargs)
+        while True:
+            r, _, _ = select.select([conn], [], [], 60)
+            if not r:
+                continue
+            conn.poll()
+            while conn.notifies:
+                message = conn.notifies.pop()
+                if message.pid == os.getpid():
+                    continue
+                args, kwargs = json.loads(message.payload)
+                self._dispatch_event(message.channel, args, kwargs)
 
     def _dispatch_event(self, event, args, kwargs):
         for callback in self._iter_bound_callbacks(event):
@@ -345,7 +385,6 @@ class PostgresBroker(Broker):
                 future.set_result(results[future.id])
             else:
                 future.set_exception(results[future.id])
-
 
     def acquire(self, tid):
 

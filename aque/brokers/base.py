@@ -138,6 +138,9 @@ class Broker(object):
     def mark_as_error(self, tid, exc):
         """Store an error and set the status to "error"."""
 
+    def log_output(self, tid, fd, content):
+        pass
+
     @abstractmethod
     def iter_tasks(self, **kwargs):
         """Get all tasks (restricted to the given fields).

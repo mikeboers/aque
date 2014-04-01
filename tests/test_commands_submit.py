@@ -29,10 +29,7 @@ class TestSubmitCommand(BrokerTestCase):
         self.assertEqual(int(t['id']), tid )
         self.assertEqual(t['status'], 'pending')
 
-        with override_stdio() as (out, _):
-            self.worker.run_to_end()
-
-        self.assertIn(msg, out.getvalue())
+        self.worker.run_to_end()
 
         one_status = self_check_output(['status', str(tid)])
         self.assertSearch(r'\b%d\s+\w+\s+success' % tid, one_status)

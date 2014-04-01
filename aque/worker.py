@@ -100,9 +100,9 @@ class ProcJob(BaseJob):
         o_rfd, o_wfd = os.pipe()
         e_rfd, e_wfd = os.pipe()
 
-        self.redirections = {
-            o_rfd: sys.stdout,
-            e_rfd: sys.stderr,
+        self.canonical_fds = {
+            o_rfd: 1,
+            e_rfd: 2,
         }
 
         # Start the actuall subprocess.
@@ -116,23 +116,23 @@ class ProcJob(BaseJob):
         os.close(e_wfd)
 
     def to_select(self):
-        rfds = self.redirections.keys()
+        rfds = self.canonical_fds.keys()
         rfds.append(self.finished.fileno())
         return rfds, [], []
 
     def on_select(self, rfds, wfds, xfds):
 
         for rfd in rfds:
-            stream = self.redirections.get(rfd)
-            if stream:
+            to_fd = self.canonical_fds.get(rfd)
+            if to_fd is not None:
                 x = os.read(rfd, 65536)
                 if x:
-                    stream.write(x)
+                    self.broker.log_output(self.id, to_fd, x)
                 else:
                     os.close(rfd)
-                    del self.redirections[rfd]
+                    del self.canonical_fds[rfd]
 
-        if (not self.redirections or not rfds) and (not self.proc.is_alive() or self.finished.is_set()):
+        if (not self.canonical_fds or not rfds) and (not self.proc.is_alive() or self.finished.is_set()):
             log.log(5, 'proc %d for task %d joined' % (self.proc.pid, self.id))
             raise StopSelection()
 
