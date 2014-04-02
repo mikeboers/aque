@@ -104,6 +104,8 @@ class PostgresBroker(Broker):
 
     def __init__(self, **kwargs):
 
+        self._stopper = threading.Event()
+
         self._notify_conn = None
         self._notify_lock = threading.Lock()
         self._notify_thread = None
@@ -113,7 +115,6 @@ class PostgresBroker(Broker):
         self._reflect()
 
         super(PostgresBroker, self).__init__()
-
 
         self._heartbeat_lock = threading.Lock()
         self._heartbeat_thread = None
@@ -129,7 +130,7 @@ class PostgresBroker(Broker):
         self.close()
 
     def close(self):
-        pass
+        self._stopper.set()
     
     def _notify_start(self):
         with self._notify_lock:
@@ -266,23 +267,20 @@ class PostgresBroker(Broker):
             cur.execute('DELETE FROM tasks WHERE id = ANY(%s)', [tids])
             cur.execute('DELETE FROM output_logs WHERE task_id = ANY(%s)', [tids])
     
-    def bind(self, event, callback=None):
-        x = super(PostgresBroker, self).bind(event, callback)
-        if x:
-            return x
-        if self._notify_conn is not None:
+    def bind(self, events, callback=None):
+        events = [events] if isinstance(events, basestring) else list(events)
+        decorator = super(PostgresBroker, self).bind(events, callback)
+        if decorator:
+            return decorator
+
+        if self._notify_conn:
             cur = self._notify_conn.cursor()
-            cur.execute('LISTEN "%s"' % event)
+            for e in events:
+                cur.execute('LISTEN "%s"' % e)
             self._notify_conn.commit()
 
-        self._notify_start()
-
-    def unbind(self, event, callback):
-        super(PostgresBroker, self).bind(event, callback)
-        if self._notify_conn and not self._bound_callbacks[event]:
-            cur = self._notify_conn.cursor()
-            cur.execute('UNLISTEN "%s"' % event)
-            self._notify_conn.commit()
+        else:
+            self._notify_start()
 
     def _send_remote_events(self, events, args, kwargs):
         payload = json.dumps([args, kwargs])
@@ -340,17 +338,27 @@ class PostgresBroker(Broker):
             cur.execute('LISTEN "%s"' % event)
         conn.commit()
 
-        while True:
+        while not self._stopper.is_set():
             r, _, _ = select.select([conn], [], [], 60)
             if not r:
                 continue
             conn.poll()
             while conn.notifies:
                 message = conn.notifies.pop()
+
+                if not self._bound_callbacks.get(message.channel):
+                    cur = conn.cursor()
+                    cur.execute('UNLISTEN "%s"' % message.channel)
+                    conn.execute()
+                    continue
+
                 if message.pid == os.getpid():
                     continue
+
                 args, kwargs = json.loads(message.payload)
                 self._dispatch_local_events([message.channel], args, kwargs)
+
+        self._pool.putconn(conn)
 
     def acquire(self, tid):
 
@@ -391,7 +399,7 @@ class PostgresBroker(Broker):
             self._captured_tids.remove(tid)
 
     def _heartbeat(self):
-        while True:
+        while not self._stopper.is_set():
             with self._heartbeat_lock:
                 if self._captured_tids:
                     with self._cursor() as cur:
