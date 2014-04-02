@@ -6,11 +6,13 @@ from unittest import TestCase as BaseTestCase
 import contextlib
 import datetime
 import errno
+import functools
 import os
 import re
 import shutil
 import sys
 import threading
+import time
 import urlparse
 
 import psycopg2 as pg2
