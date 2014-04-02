@@ -10,9 +10,8 @@ from aque.commands.main import command, argument
     argument('-f', '--filter'),
     argument('-c', '--csv'),
     argument('-p', '--pattern', default='{id:5d} {user:9s} {status:7s} {pattern:7s} "{name}" {func_signature} -> {result!r}'),
-    argument('tid', nargs='*'),
+    argument('tid', nargs='*', type=int),
     help='task status',
-    aliases=['ps'],
 )
 def status(args):
 
@@ -22,7 +21,7 @@ def status(args):
         filter_ = {}
         if not args.all:
             filter_['user'] = os.getlogin()
-        tasks = list(args.broker.iter_tasks(**filter_))
+        tasks = list(args.broker.search(filter_))
         tasks.sort(key=lambda t: t['id'])
 
     if args.csv:

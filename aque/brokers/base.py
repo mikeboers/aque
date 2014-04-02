@@ -1,6 +1,12 @@
 from abc import ABCMeta, abstractmethod
+import logging
+import weakref
 
 from aque.futures import Future
+from aque.utils import encode_callable
+
+
+log = logging.getLogger(__name__)
 
 
 class Broker(object):
@@ -29,12 +35,13 @@ class Broker(object):
         return cls()
 
     def __init__(self):
-        self.futures = {}
+        self._futures = weakref.WeakValueDictionary()
         self._bound_callbacks = {}
+        self.bind('task_status', self._on_task_status)
 
     # BROKER API
 
-    def did_fork(self):
+    def after_fork(self):
         """Called by a :class:`Worker` after forking."""
     
     def update_schema(self):
@@ -53,49 +60,56 @@ class Broker(object):
 
     # LOW-LEVEL TASK API
 
-    @abstractmethod
-    def create(self, prototype=None):
-        """Create a task, and return a Future."""
+    def create(self, prototypes):
+        """Create a list of tasks, and return their :class:`.Future`s."""
+        if isinstance(prototypes, dict):
+            return self._create_many([prototypes])[0]
+        else:
+            return self._create_many(prototypes)
 
     @abstractmethod
-    def fetch(self, tid):
-        """Get the data for a given task ID.
+    def _create_many(self, prototypes):
+        pass
 
-        ``retval['id']`` MUST be ``tid``.
+    def fetch(self, tids, fields=None):
+        """Get the data for a given task IDs, with at least the given fields.
+
+        :param list tids: task IDs to fetch.
+        :param list fields: which fields the return tasks should have.
+        :returns dict: mapping existing IDs to their tasks.
         """
-
-    def fetch_many(self, tids):
-        """Get the data for several tasks.
-
-        Missing tasks will not be in the resultant dictionary.
-
-        """
-        res = {}
-        for tid in tids:
+        if isinstance(tids, int):
             try:
-                res[tid] = self.fetch(tid)
-            except ValueError:
-                pass
-        return res
+                return self._fetch_many([tids], fields)[tids]
+            except KeyError:
+                raise ValueError('unknown task ID %s' % tids)
+        else:
+            return self._fetch_many(tids, fields)
 
     @abstractmethod
-    def update(self, tid, data):
-        """Update the given task with the given data, but do NOT notify anyone.
+    def _fetch_many(self, tids, fields):
+        pass
 
-        Generally used for finalizing the construction of tasks."""
+    def delete(self, tids):
+        if isinstance(tids, int):
+            self._delete_many([tids])
+        else:
+            self._delete_many(tids)
 
     @abstractmethod
-    def delete(self, tid):
-        """Delete the given task."""
+    def _delete_many(self, tids):
+        pass
     
+
     # MID-LEVEL TASK API
 
     def acquire(self, tid):
-        """Capture the task, and keep a heartbeat running."""
+        """Capture a single task, and keep a heartbeat running."""
         return True
 
     def release(self, tid):
-        """Release a task that we are done with."""
+        """Release a single task that we are done with."""
+
 
     # MID-lEVEL EVENT API
 
@@ -106,13 +120,24 @@ class Broker(object):
     def unbind(self, event, callback):
         """Unschedule a function from a given event."""
         self._bound_callbacks[event].remove(callback)
-
-    def _iter_bound_callbacks(self, event):
-        return self._bound_callbacks.get(event, ())
     
-    @abstractmethod
-    def trigger(self, event, *args, **kwargs):
-        """Trigger an event; scheduled functions will be called with given args."""
+    def trigger(self, events, *args, **kwargs):
+        """Trigger a set of events; scheduled functions will be called with given args."""
+        events = [events] if isinstance(events, basestring) else events
+        self._dispatch_local_events(events, args, kwargs)
+        self._send_remote_events(events, args, kwargs)
+
+    def _dispatch_local_events(self, events, args, kwargs):
+        for event in events:
+            for callback in self._bound_callbacks.get(event, ()):
+                try:
+                    log.debug('dispatching %s to %s(*%r, **%r)' % (event, encode_callable(callback), args, kwargs))
+                    callback(*args, **kwargs)
+                except StandardError:
+                    log.exception('error during event callback')
+
+    def _send_remote_events(self, events, args, kwargs):
+        pass
 
     # HIGH-LEVEL TASK API
 
@@ -121,36 +146,66 @@ class Broker(object):
 
         Should return the same instance multiple times for the same task.
         """
-        return self.futures.setdefault(tid, Future(self, tid))
+        return self._futures.setdefault(tid, Future(self, tid))
 
-    def set_status_and_notify(self, tid, status):
-        self.update(tid, {'status': status})
+    def set_status_and_notify(self, tids, status, result=None):
+        if status not in ('pending', 'success', 'error'):
+            raise ValueError('bad status %r' % status)
+        tids = [tids] if isinstance(tids, int) else list(tids)
+        self._set_status(tids, status, result)
+        events = ['task_status'] + ['task_status.%d' % tid for tid in tids]
+        self.trigger(events, tids, status)
 
-    def mark_as_pending(self, tid):
-        """Schedule a task to run."""
-        self.set_status_and_notify(tid, 'pending')
+    def _on_task_status(self, tids, status):
+
+        if status not in ('success', 'error'):
+            return
+
+        futures = [self._futures.get(tid) for tid in tids]
+        futures = filter(None, futures)
+        if not futures:
+            return
+
+        tasks = self._fetch_many(tids, ['id', 'status', 'result'])
+
+        for future in futures:
+
+            task = tasks.get(future.id)
+            if not task:
+                log.warning('could not find task %d during task_status' % future.id)
+                continue
+
+            if task['status'] != status:
+                log.warning('task %d status changed from %s to %s during event dispatch' % (task['id'], status, task['status']))
+
+            log.debug('dispatching %s to %s' % (status, future.id))
+            if status == 'success':
+                future.set_result(task['result'])
+            else:
+                future.set_exception(task['result'])
 
     @abstractmethod
-    def mark_as_success(self, tid, result):
-        """Store a result and set the status to "success"."""
-
-    @abstractmethod
-    def mark_as_error(self, tid, exc):
-        """Store an error and set the status to "error"."""
-
-    def log_output(self, tid, fd, content):
+    def _set_status(self, tids, status, result):
         pass
 
-    def get_output(self, tid):
+    def log_output_and_notify(self, tid, fd, content):
+        self._log_output(tid, fd, content)
+        self.trigger(['output_log', 'output_log[%d]' % tid], fd, content)
+
+    def _log_output(self, tid, fd, content):
+        pass
+
+    def get_output(self, tids):
         return []
 
     @abstractmethod
-    def iter_tasks(self, **kwargs):
+    def search(self, filter=None, fields=None):
         """Get all tasks (restricted to the given fields).
 
         E.g.::
-            broker.iter_tasks(status='pending')
+            broker.search({'status': 'pending'}, ['id', 'status', 'depedencies'])
             # returns iterator of pending tasks
 
         """
+
 

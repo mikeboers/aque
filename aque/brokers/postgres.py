@@ -32,6 +32,11 @@ class PostgresBroker(Broker):
         return cls(host=parts.netloc, database=parts.path.strip('/').lower())
 
     def __init__(self, **kwargs):
+
+        self._notify_conn = None
+        self._notify_lock = threading.Lock()
+        self._notify_thread = None
+        
         super(PostgresBroker, self).__init__()
 
         self._kwargs = kwargs
@@ -39,20 +44,15 @@ class PostgresBroker(Broker):
 
         self._reflect()
 
-        self._notify_conn = None
-        self._trigger_lock = threading.Lock()
-        self._trigger_thread = None
 
         self._heartbeat_lock = threading.Lock()
         self._heartbeat_thread = None
         self._captured_tids = []
 
-        self.bind('task_status', self._on_task_status)
-
     def _open_pool(self):
         return pg.pool.ThreadedConnectionPool(0, 4 * psutil.cpu_count(), **self._kwargs)
 
-    def did_fork(self):
+    def after_fork(self):
         self._pool = self._open_pool()
 
     def __del__(self):
@@ -61,12 +61,12 @@ class PostgresBroker(Broker):
     def close(self):
         pass
     
-    def _trigger_start(self):
-        with self._trigger_lock:
-            if not self._trigger_thread:
-                self._trigger_thread = threading.Thread(target=self._trigger_target)
-                self._trigger_thread.daemon=True
-                self._trigger_thread.start()
+    def _notify_start(self):
+        with self._notify_lock:
+            if not self._notify_thread:
+                self._notify_thread = threading.Thread(target=self._notify_target)
+                self._notify_thread.daemon=True
+                self._notify_thread.start()
 
     @contextlib.contextmanager
     def _connect(self):
@@ -127,7 +127,7 @@ class PostgresBroker(Broker):
 
             )''')
 
-            cur.execute('''CREATE TABLE IF NOT EXISTS task_output (
+            cur.execute('''CREATE TABLE IF NOT EXISTS output_logs (
                 task_id SERIAL NOT NULL,
                 ctime TIMESTAMP NOT NULL DEFAULT localtimestamp,
                 fd SMALLINT NOT NULL,
@@ -146,17 +146,14 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('''DROP TABLE IF EXISTS dependencies''')
             cur.execute('''DROP TABLE IF EXISTS tasks''')
-            cur.execute('''DROP TABLE IF EXISTS task_output''')
+            cur.execute('''DROP TABLE IF EXISTS output_logs''')
 
     def get_future(self, tid):
         future = super(PostgresBroker, self).get_future(tid)
-        self._trigger_start()
+        self._notify_start()
         return future
 
-    def create(self, prototype=None):
-        return self.create_many([prototype or {}])[0]
-
-    def create_many(self, prototypes):
+    def _create_many(self, prototypes):
         fields, encoded = self._encode_many(prototypes)
         with self._cursor() as cur:
             params = [[e[f] for f in fields] for e in encoded]
@@ -172,17 +169,7 @@ class PostgresBroker(Broker):
             tids = [row[0] for row in cur]
         return [self.get_future(tid) for tid in tids]
 
-    def fetch(self, tid, fields=None):
-        fields = ', '.join('"%s"' % f for f in fields) if fields else '*'
-        with self._cursor() as cur:
-            cur.execute('''SELECT %s FROM tasks WHERE id = %%s''' % fields, [tid])
-            try:
-                row = next(cur)
-            except StopIteration:
-                raise ValueError('unknown task %r' % tid)
-            return self._decode_task(cur, row)
-
-    def fetch_many(self, tids, fields=None):
+    def _fetch_many(self, tids, fields):
         if not tids:
             return {}
         fields = ', '.join('"%s"' % f for f in fields) if fields else '*'
@@ -208,7 +195,6 @@ class PostgresBroker(Broker):
             return x
 
     def _encode_task(self, task):
-
         extra = {}
         res = {}
         for k, v in task.iteritems():
@@ -240,92 +226,58 @@ class PostgresBroker(Broker):
         task.update(task.pop('extra', None) or {})
         return task
 
-    def update(self, tid, data):
-        encoded = self._encode_task(data)
-        fields, params = zip(*encoded.iteritems())
-        params += (tid, )
-        query = 'UPDATE tasks SET %s WHERE id = %%s' % ', '.join('"%s" = %%s' % name for name in fields)
-        with self._cursor() as cur:
-            cur.execute(query, params)
-
-    def delete(self, tid):
-        self.delete_many([tid])
-
-    def delete_many(self, tids):
+    def _delete_many(self, tids):
         tids = list(tids)
         with self._cursor() as cur:
             cur.execute('DELETE FROM tasks WHERE id = ANY(%s)', [tids])
-            cur.execute('DELETE FROM task_output WHERE task_id = ANY(%s)', [tids])
+            cur.execute('DELETE FROM output_logs WHERE task_id = ANY(%s)', [tids])
     
     def bind(self, event, callback):
-        self._bound_callbacks.setdefault(event, []).append(callback)
+        super(PostgresBroker, self).bind(event, callback)
         if self._notify_conn and len(self._bound_callbacks[event]) == 1:
             cur = self._notify_connection.cursor()
             cur.execute('LISTEN "%s"' % event)
             self._notify_connection.commit()
 
     def unbind(self, event, callback):
-        self._bound_callbacks[event].remove(callback)
+        super(PostgresBroker, self).bind(event, callback)
         if self._notify_conn and not self._bound_callbacks[event]:
             cur = self._notify_connection.cursor()
             cur.execute('UNLISTEN "%s"' % event)
             self._notify_connection.commit()
 
-    def trigger(self, events, *args, **kwargs):
-        events = [events] if isinstance(events, basestring) else list(events)
-        with self._cursor() as cur:
-            self._notify_event(cur, events, args, kwargs)
-        for e in events:
-            self._dispatch_event(e, args, kwargs)
-
-    def _notify_event(self, cur, events, args, kwargs):
+    def _send_remote_events(self, events, args, kwargs):
         payload = json.dumps([args, kwargs])
-        for e in events:
-            cur.execute('NOTIFY "%s", %%s' % e, [payload])
+        with self._cursor() as cur:
+            for e in events:
+                cur.execute('NOTIFY "%s", %%s' % e, [payload])
 
-    def set_status_and_notify(self, tids, status):
+    def _set_status(self, tids, status, result):
         tids = [tids] if isinstance(tids, int) else list(tids)
+        encoded = self._encode('result', result)
+        log.debug('setting status of %r to %r' % (tids, status))
         with self._cursor() as cur:
-            cur.execute('''UPDATE tasks SET status = %s WHERE id = ANY(%s)''', (status, tids))
-        self.trigger('task_status', tids, status)
+            cur.execute('''UPDATE tasks SET status = %s, result = %s WHERE id = ANY(%s)''', [status, encoded, tids])
 
-    def mark_as_success(self, tid, result):
+    def _log_output(self, tid, fd, content):
         with self._cursor() as cur:
-            cur.execute(
-                '''UPDATE tasks SET status = 'success', result = %s WHERE id = %s''',
-                [self._encode('result', result), tid],
-            )
-        self.trigger('task_status', [tid], 'success')
-
-    def mark_as_error(self, tid, exception):
-        with self._cursor() as cur:
-            cur.execute(
-                '''UPDATE tasks SET status = 'error', result = %s WHERE id = %s''',
-                [self._encode('result', exception), tid],
-            )
-        self.trigger('task_status', [tid], 'error')
-
-    def log_output(self, tid, fd, content):
-        with self._cursor() as cur:
-            cur.execute('INSERT INTO task_output (task_id, fd, content) VALUES (%s, %s, %s)', [
+            cur.execute('INSERT INTO output_logs (task_id, fd, content) VALUES (%s, %s, %s)', [
                 tid,
                 fd,
                 content.encode('string-escape'),
             ])
-        self.trigger('task_output_%d' % tid, fd, content)
 
     def get_output(self, tids):
         with self._cursor() as cur:
-            cur.execute('SELECT task_id, ctime, fd, content FROM task_output WHERE task_id = ANY(%s) ORDER BY ctime', [tids])
+            cur.execute('SELECT task_id, ctime, fd, content FROM output_logs WHERE task_id = ANY(%s) ORDER BY ctime', [tids])
             return [(task_id, ctime, fd, content.decode('string-escape')) for task_id, ctime, fd, content in cur]
 
-    def iter_tasks(self, **kwargs):
+    def search(self, filter=None, fields=None):
 
-        fields = kwargs.pop('fields', None)
         fields = ', '.join('"%s"' % f for f in fields) if fields else '*'
 
-        if kwargs:
-            items = sorted(kwargs.iteritems())
+        if filter:
+            items = sorted(filter.iteritems())
             clause = 'WHERE ' + ' AND '.join('"%s" = %%s' % k for k, v in items)
             params = [v for k, v in items]
         else:
@@ -342,7 +294,7 @@ class PostgresBroker(Broker):
         for row in rows:
             yield self._decode_task(cur, row)
 
-    def _trigger_target(self):
+    def _notify_target(self):
 
         self._notify_conn = conn = self._pool.getconn()
         cur = conn.cursor()
@@ -360,36 +312,7 @@ class PostgresBroker(Broker):
                 if message.pid == os.getpid():
                     continue
                 args, kwargs = json.loads(message.payload)
-                self._dispatch_event(message.channel, args, kwargs)
-
-    def _dispatch_event(self, event, args, kwargs):
-        for callback in self._iter_bound_callbacks(event):
-            try:
-                log.debug('dispatching %s to %s(*%r, **%r)' % (event, utils.encode_callable(callback), args, kwargs))
-                callback(*args, **kwargs)
-            except StandardError:
-                log.exception('error during event callback')
-
-    def _on_task_status(self, tids, status):
-
-        if status not in ('success', 'error'):
-            return
-
-        futures = [self.futures.get(tid) for tid in tids]
-        futures = filter(None, futures)
-        if not futures:
-            return
-
-        with self._cursor() as cur:
-            cur.execute('SELECT id, result FROM tasks WHERE id = ANY(%s)', [[f.id for f in futures]])
-            results = dict((id_, self._decode('result', res)) for id_, res in cur)
-
-        for future in futures:
-            log.debug('dispatching %s %r to %s' % (status, results[future.id], future.id))
-            if status == 'success':
-                future.set_result(results[future.id])
-            else:
-                future.set_exception(results[future.id])
+                self._dispatch_local_events([message.channel], args, kwargs)
 
     def acquire(self, tid):
 

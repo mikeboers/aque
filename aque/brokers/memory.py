@@ -29,10 +29,7 @@ class MemoryBroker(Broker):
     def destroy_schema(self):
         self._init()
 
-    def create(self, prototype=None):
-        return self.create_many([prototype])[0]
-
-    def create_many(self, prototypes):
+    def _create_many(self, prototypes):
         futures = []
         with self._id_lock:
             for proto in prototypes:
@@ -43,46 +40,27 @@ class MemoryBroker(Broker):
                 futures.append(self.get_future(tid))
         return futures
 
-    def fetch(self, tid):
-        return self._tasks[tid]
-
-    def update(self, tid, data):
-        self._tasks.setdefault(tid, {}).update(data)
-
-    def delete(self, tid):
-        self._tasks.pop(tid, None)
-
-    def trigger(self, event, *args, **kwargs):
-        for callback in self._iter_bound_callbacks(event):
-            try:
-                callback(*args, **kwargs)
-            except StandardError:
-                log.exception('error while notifying %s with %r %r %r' % (event, callback, args, kwargs))
-
-    def set_status_and_notify(self, tids, status):
-        if not isinstance(tids, (tuple, list)):
-            tids = [tids]
+    def _fetch_many(self, tids, fields):
+        res = {}
         for tid in tids:
-            self.update(tid, {'status': status})
-            self.trigger('task_status', tid, status)
+            try:
+                res[tid] = self._tasks[tid]
+            except KeyError:
+                pass
+        return res
 
-    def mark_as_success(self, tid, result):
-        self.update(tid, {'status': 'success', 'result': result})
-        self.trigger('task_status', tid, 'success')
-        future = self.futures.get(tid)
-        if future:
-            future.set_result(result)
+    def _delete_many(self, tids):
+        for tid in tids:
+            self._tasks.pop(tid, None)
 
-    def mark_as_error(self, tid, exception):
-        self.update(tid, {'status': 'error', 'result': exception})
-        self.trigger('task_status', tid, 'error')
-        future = self.futures.get(tid)
-        if future:
-            future.set_exception(exception)
+    def _set_status(self, tids, status, result):
+        for tid in tids:
+            self._tasks.setdefault(tid, {}).update({'status': status, 'result': result})
 
-    def iter_tasks(self, **kwargs):
+    def search(self, filter=None, fields=None):
+        filter_ = filter or {}
         for task in self._tasks.itervalues():
-            for k, v in kwargs.iteritems():
+            for k, v in filter_.iteritems():
                 if task.get(k) != v:
                     continue
             yield task.copy()

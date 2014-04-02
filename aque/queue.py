@@ -84,11 +84,11 @@ class Queue(object):
             for proto in satisfied:
                 proto['dependencies'] = [f.id for f in proto['dependencies']]
 
-            futures = self.broker.create_many(satisfied)
+            futures = self.broker.create(satisfied)
             for p, f in zip(satisfied, futures):
                 futures_by_id[id(p)] = f
 
-        self.broker.mark_as_pending([f.id for f in futures_by_id.itervalues()])
+        self.broker.set_status_and_notify([f.id for f in futures_by_id.itervalues()], 'pending')
 
         return futures_by_id
 

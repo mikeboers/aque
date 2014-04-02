@@ -68,10 +68,10 @@ class BaseJob(object):
             raise
         
         except Exception as e:
-            self.broker.mark_as_error(self.id, e)
+            self.broker.set_status_and_notify(self.id, 'error', e)
 
         else:
-            self.broker.mark_as_success(self.id, res)
+            self.broker.set_status_and_notify(self.id, 'success', res)
 
         finally:
             self.finished.set()
@@ -127,7 +127,7 @@ class ProcJob(BaseJob):
             if to_fd is not None:
                 x = os.read(rfd, 65536)
                 if x:
-                    self.broker.log_output(self.id, to_fd, x)
+                    self.broker.log_output_and_notify(self.id, to_fd, x)
                 else:
                     os.close(rfd)
                     del self.canonical_fds[rfd]
@@ -138,7 +138,7 @@ class ProcJob(BaseJob):
 
     def target(self, o_wfd, e_wfd):
 
-        self.broker.did_fork()
+        self.broker.after_fork()
 
         if IS_ROOT:
 
@@ -157,6 +157,7 @@ class ProcJob(BaseJob):
         # Prep the stdio; close stdin and redirect stdout/err to the parent's
         # preferred pipes. Everything should clean itself up.
         os.close(0)
+        # TODO: don't do this when debugging
         os.dup2(o_wfd, 1)
         os.dup2(e_wfd, 2)
         os.close(o_wfd)
@@ -263,7 +264,7 @@ class Worker(object):
 
             # Shortcut for grouping tasks.
             if task.get('pattern', 'xxx') is None:
-                self.broker.mark_as_success(task['id'], None)
+                self.broker.set_status_and_notify(task['id'], 'success', None)
                 continue
 
             # Don't consider anything we are already working on.
@@ -320,7 +321,7 @@ class Worker(object):
 
     def iter_open_tasks(self):
 
-        pending_tasks = list(self.broker.iter_tasks(status='pending', fields=['id', 'status', 'dependencies']))
+        pending_tasks = list(self.broker.search({'status': 'pending'}, ['id', 'status', 'dependencies']))
 
         task_cache = dict((t['id'], t) for t in pending_tasks)
         task_priorities = {}
@@ -354,7 +355,7 @@ class Worker(object):
             # Cache the ones we haven't seen before.
             uncached_ids = [tid for tid in dependency_ids if tid not in task_cache]
             if uncached_ids:
-                task_cache.update(self.broker.fetch_many(uncached_ids, fields=['id', 'status', 'dependencies']))
+                task_cache.update(self.broker.fetch(uncached_ids, fields=['id', 'status', 'dependencies']))
 
             skip_task = False
 
@@ -364,7 +365,7 @@ class Worker(object):
 
                 if not dep:
                     log.warning('task %r is missing dependency %r' % (task['id'], tid))
-                    self.broker.mark_as_error(task['id'],
+                    self.broker.set_status_and_notify(task['id'], 'error',
                         DependencyResolutionError('task %r does not exist' % tid),
                     )
                     skip_task = True
@@ -380,7 +381,7 @@ class Worker(object):
                 elif dep['status'] != 'success':
                     skip_task = True
                     log.info('task %r has failed dependency %r' % (task['id'], tid))
-                    self.broker.mark_as_error(task['id'],
+                    self.broker.set_status_and_notify(task['id'], 'error',
                         DependencyFailedError('task %r has status %r' % (tid, dep['status']))
                     )
 

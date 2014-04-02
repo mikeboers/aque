@@ -17,7 +17,7 @@ def do_reduce_task(task):
         return
 
     dependency_ids = task.get('dependencies') or []
-    deps = current_broker().fetch_many(dependency_ids)
+    deps = current_broker().fetch(dependency_ids)
     sequence = [deps[id_]['result'] for id_ in dependency_ids]
 
     # log.debug('reducing %r with %r and %r' % (sequence, func, args))
