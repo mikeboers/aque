@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+import functools
 import logging
 import weakref
 
@@ -113,17 +114,23 @@ class Broker(object):
 
     # MID-lEVEL EVENT API
 
-    def bind(self, event, callback):
+    def bind(self, events, callback=None):
         """Schedule a function to be called whenever a given event happens."""
-        self._bound_callbacks.setdefault(event, []).append(callback)
+        if callback is None:
+            return functools.partial(self.bind, events)
+        events = [events] if isinstance(events, basestring) else list(events)
+        for e in events:
+            self._bound_callbacks.setdefault(e, []).append(callback)
 
-    def unbind(self, event, callback):
+    def unbind(self, events, callback):
         """Unschedule a function from a given event."""
-        self._bound_callbacks[event].remove(callback)
+        events = [events] if isinstance(events, basestring) else list(events)
+        for e in events:
+            self._bound_callbacks[e].remove(callback)
     
     def trigger(self, events, *args, **kwargs):
         """Trigger a set of events; scheduled functions will be called with given args."""
-        events = [events] if isinstance(events, basestring) else events
+        events = [events] if isinstance(events, basestring) else list(events)
         self._dispatch_local_events(events, args, kwargs)
         self._send_remote_events(events, args, kwargs)
 
