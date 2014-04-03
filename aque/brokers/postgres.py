@@ -1,6 +1,7 @@
 from Queue import Queue, Empty
 import contextlib
 import datetime
+import functools
 import json
 import logging
 import os
@@ -15,10 +16,80 @@ import psycopg2.extras
 import psycopg2 as pg
 
 import aque.utils as utils
-from .base import Broker
+from aque.brokers.base import Broker
 
 
 log = logging.getLogger(__name__)
+
+
+schema_migrations = []
+def patch(func=None, name=None):
+    if func is None:
+        return functools.partial(patch, name=name)
+
+    name = name or func.__name__
+    name = name.strip('_')
+    schema_migrations.append((name, func))
+
+    return func
+
+
+@patch
+def create_task_table(cur):
+    cur.execute('''CREATE TABLE tasks (
+
+        id SERIAL PRIMARY KEY,
+        name TEXT,
+
+        dependencies INTEGER[],
+
+        -- requirements
+        cpus REAL, -- fractional CPUs are okay
+        memory INTEGER, -- in bytes
+        platform TEXT,
+        host TEXT,
+
+        status TEXT NOT NULL DEFAULT 'creating',
+        creation_time TIMESTAMP NOT NULL DEFAULT localtimestamp,
+        first_active TIMESTAMP,
+        last_active TIMESTAMP,
+
+        -- priority
+        priority INTEGER NOT NULL DEFAULT 1000,
+        io_paths TEXT[],
+        duration INTEGER,
+
+        -- execution
+        pattern BYTEA,
+        func BYTEA,
+        args BYTEA,
+        kwargs BYTEA,
+
+        -- environmental
+        "user" TEXT,
+        "group" TEXT,
+        cwd TEXT,
+        environ BYTEA,
+
+        -- the final result, or exception (depending on status)
+        result BYTEA,
+
+        -- everything else
+        extra BYTEA
+
+    )''')
+    cur.execute('CREATE INDEX tasks_status_index ON tasks (id, status)')
+
+
+@patch
+def create_output_log_table(cur):
+    cur.execute('''CREATE TABLE output_logs (
+        task_id SERIAL NOT NULL,
+        ctime TIMESTAMP NOT NULL DEFAULT localtimestamp,
+        fd SMALLINT NOT NULL,
+        content TEXT NOT NULL
+    )''')
+    cur.execute('CREATE INDEX output_logs_index ON output_logs (task_id)')
 
 
 class PostgresBroker(Broker):
@@ -85,66 +156,31 @@ class PostgresBroker(Broker):
                 yield cur
 
     def update_schema(self):
+
         with self._cursor() as cur:
-            cur.execute('''CREATE TABLE IF NOT EXISTS tasks (
-
+            cur.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
                 id SERIAL PRIMARY KEY,
-                name TEXT,
-
-                dependencies INTEGER[],
-
-                -- requirements
-                cpus REAL, -- fractional CPUs are okay
-                memory INTEGER, -- in bytes
-                platform TEXT,
-                host TEXT,
-
-                status TEXT NOT NULL DEFAULT 'creating',
-                last_active TIMESTAMP,
-
-                -- priority
-                priority INTEGER NOT NULL DEFAULT 1000,
-                io_paths TEXT[],
-                duration INTEGER,
-
-                -- execution
-                pattern BYTEA,
-                func BYTEA,
-                args BYTEA,
-                kwargs BYTEA,
-
-                -- environmental
-                "user" TEXT,
-                "group" TEXT,
-                cwd TEXT,
-                environ BYTEA,
-
-                -- the final result, or exception (depending on status)
-                result BYTEA,
-
-                -- everything else
-                extra BYTEA
-
-            )''')
-
-            cur.execute('''CREATE TABLE IF NOT EXISTS output_logs (
-                task_id SERIAL NOT NULL,
                 ctime TIMESTAMP NOT NULL DEFAULT localtimestamp,
-                fd SMALLINT NOT NULL,
-                content TEXT NOT NULL
+                name TEXT NOT NULL
             )''')
-            # TODO: create an index
+            cur.execute('SELECT name from schema_migrations')
+            applied_patches = set(row[0] for row in cur)
+
+        for name, func in schema_migrations:
+            if name not in applied_patches:
+                log.info('applying schema migration %s' % name)
+                with self._cursor() as cur:
+                    func(cur)
+                    cur.execute('INSERT INTO schema_migrations (name) VALUES (%s)', [name])
 
     def _reflect(self):
         with self._cursor() as cur:
-            # Determine what rows we actually have.
             cur.execute('''SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tasks' ORDER BY ordinal_position''')
-            self._task_fields = tuple(cur)
-            self._task_field_types = dict(self._task_fields)
+            self._task_field_types = dict(cur)
 
     def destroy_schema(self):
         with self._cursor() as cur:
-            cur.execute('''DROP TABLE IF EXISTS dependencies''')
+            cur.execute('''DROP TABLE IF EXISTS schema_migrations''')
             cur.execute('''DROP TABLE IF EXISTS tasks''')
             cur.execute('''DROP TABLE IF EXISTS output_logs''')
 
