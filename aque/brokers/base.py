@@ -3,6 +3,7 @@ import functools
 import logging
 import weakref
 
+from aque.eventloop import EventLoop
 from aque.futures import Future
 from aque.utils import encode_callable
 
@@ -38,7 +39,10 @@ class Broker(object):
     def __init__(self):
         self._futures = weakref.WeakValueDictionary()
         self._bound_callbacks = {}
+
+        self._event_loop = None
         self.bind('task_status', self._on_task_status)
+        self._event_loop = EventLoop()
 
     # BROKER API
 

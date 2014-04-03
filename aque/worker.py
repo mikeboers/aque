@@ -18,7 +18,7 @@ from aque.brokers import get_broker
 from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternMissingError
 from aque.futures import Future
 from aque.local import _local
-from aque.utils import decode_callable, parse_bytes
+from aque.utils import decode_callable, parse_bytes, debug
 from aque.eventloop import SelectableEvent, EventLoop, StopSelection
 
 
@@ -29,6 +29,8 @@ CPU_COUNT = psutil.cpu_count()
 MEM_TOTAL = psutil.virtual_memory().total
 IS_ROOT = not os.getuid()
 LOGIN = pwd.getpwuid(os.getuid()).pw_name
+
+
 
 
 class BaseJob(object):
@@ -117,24 +119,40 @@ class ProcJob(BaseJob):
 
     def to_select(self):
         rfds = self.canonical_fds.keys()
-        rfds.append(self.finished.fileno())
+        if self.proc.is_alive():
+            rfds.append(self.finished.fileno())
+        if not rfds:
+            log.log(5, 'proc %d for task %d joined' % (self.proc.pid, self.id))
+            raise StopSelection()
         return rfds, [], []
 
     def on_select(self, rfds, wfds, xfds):
 
+        real_rfds = []
         for rfd in rfds:
             to_fd = self.canonical_fds.get(rfd)
             if to_fd is not None:
+                real_rfds.append(rfd)
                 x = os.read(rfd, 65536)
                 if x:
+                    log.log(5, '%d piped %s' % (self.id, x.encode('string-escape')))
                     self.broker.log_output_and_notify(self.id, to_fd, x)
                 else:
                     os.close(rfd)
                     del self.canonical_fds[rfd]
 
-        if (not self.canonical_fds or not rfds) and (not self.proc.is_alive() or self.finished.is_set()):
+
+        has_fds = real_rfds
+        has_life = self.proc.is_alive() and not self.finished.is_set()
+
+        if not has_fds and not has_life:
             log.log(5, 'proc %d for task %d joined' % (self.proc.pid, self.id))
             raise StopSelection()
+
+        elif not (has_fds and has_life) and (has_fds or has_life):
+            log.log(5, 'proc %d for task %d is about to die; only %s' % (self.proc.pid, self.id, 'has fds' if has_fds else 'has life'))
+        
+        log.log(5, 'proc %d alive: %s, finished: %s, rfds: %s' % (self.proc.pid, self.proc.is_alive(), self.finished.is_set(), rfds))
 
     def target(self, o_wfd, e_wfd):
 
@@ -299,7 +317,11 @@ class Worker(object):
             count = self._spawn_jobs(count)
 
             # TODO: longer timeout once we listen to pending task events
-            self._event_loop.process(timeout=1.0)
+            active_jobs = [x for x in self._event_loop.active if isinstance(x, BaseJob)]
+            if active_jobs:
+                log.log(5, "%d active jobs: %s" % (len(active_jobs), ', '.join(str(job.id) for job in active_jobs)))
+                self._event_loop.process(timeout=1.0)
+
 
             # Deal with any jobs that just stopped.
             job_just_finished = False
@@ -317,7 +339,9 @@ class Worker(object):
                     log.info('waiting for more work...')
                     time.sleep(1)
                 else:
-                    return
+                    break
+
+        log.debug('worker is stopping')
 
     def iter_open_tasks(self):
 

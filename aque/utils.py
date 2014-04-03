@@ -8,10 +8,17 @@ import logging
 import os
 import pkg_resources
 import re
+import sys
 import threading
 import types
 
 log = logging.getLogger(__name__)
+
+
+def debug(msg):
+    if True:
+        f = sys._getframe(1)
+        print 'DEBUG: %s [%s:%d]' % (msg, f.f_globals.get('__file__', ''), f.f_lineno)
 
 
 def encode_callable(input_):

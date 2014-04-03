@@ -104,21 +104,21 @@ class PostgresBroker(Broker):
 
     def __init__(self, **kwargs):
 
-        self._stopper = threading.Event()
-
-        self._notify_conn = None
-        self._notify_lock = threading.Lock()
-        self._notify_thread = None
-
         self._kwargs = kwargs
         self._pool = self._open_pool()
         self._reflect()
 
         super(PostgresBroker, self).__init__()
 
+        # For acquired task heartbeats.
         self._heartbeat_lock = threading.Lock()
-        self._heartbeat_thread = None
         self._captured_tids = []
+        self._event_loop.add_timer(15, self._on_heartbeat)
+
+        # For notifications.
+        self._notify_conn = None
+        self._listening_to = set()
+        self._event_loop.add(self)
 
     def _open_pool(self):
         return pg.pool.ThreadedConnectionPool(0, 4 * psutil.cpu_count(), **self._kwargs)
@@ -130,14 +130,10 @@ class PostgresBroker(Broker):
         self.close()
 
     def close(self):
-        self._stopper.set()
-    
-    def _notify_start(self):
-        with self._notify_lock:
-            if not self._notify_thread:
-                self._notify_thread = threading.Thread(target=self._notify_target)
-                self._notify_thread.daemon=True
-                self._notify_thread.start()
+        self._event_loop.stop_thread()
+        if self._pool:
+            self._pool.closeall()
+            self._pool = None
 
     @contextlib.contextmanager
     def _connect(self):
@@ -184,9 +180,8 @@ class PostgresBroker(Broker):
             cur.execute('''DROP TABLE IF EXISTS output_logs''')
 
     def get_future(self, tid):
-        future = super(PostgresBroker, self).get_future(tid)
-        self._notify_start()
-        return future
+        self._event_loop.start_thread()
+        return super(PostgresBroker, self).get_future(tid)
 
     def _create_many(self, prototypes):
         fields, encoded = self._encode_many(prototypes)
@@ -268,19 +263,9 @@ class PostgresBroker(Broker):
             cur.execute('DELETE FROM output_logs WHERE task_id = ANY(%s)', [tids])
     
     def bind(self, events, callback=None):
-        events = [events] if isinstance(events, basestring) else list(events)
-        decorator = super(PostgresBroker, self).bind(events, callback)
-        if decorator:
-            return decorator
-
-        if self._notify_conn:
-            cur = self._notify_conn.cursor()
-            for e in events:
-                cur.execute('LISTEN "%s"' % e)
-            self._notify_conn.commit()
-
-        else:
-            self._notify_start()
+        if self._event_loop:
+            self._event_loop.start_thread()
+        return super(PostgresBroker, self).bind(events, callback)
 
     def _send_remote_events(self, events, args, kwargs):
         payload = json.dumps([args, kwargs])
@@ -290,7 +275,11 @@ class PostgresBroker(Broker):
 
     def _set_status(self, tids, status, result):
         tids = [tids] if isinstance(tids, int) else list(tids)
-        encoded = self._encode('result', result)
+        try:
+            encoded = self._encode('result', result)
+        except:
+            raise
+        # THIS IS WHERE IT APPEARS TO STICK
         log.debug('setting status of %r to %r' % (tids, status))
         with self._cursor() as cur:
             cur.execute('''UPDATE tasks SET status = %s, result = %s WHERE id = ANY(%s)''', [status, encoded, tids])
@@ -330,36 +319,6 @@ class PostgresBroker(Broker):
         for row in rows:
             yield self._decode_task(cur, row)
 
-    def _notify_target(self):
-
-        self._notify_conn = conn = self._pool.getconn()
-        cur = conn.cursor()
-        for event in self._bound_callbacks:
-            cur.execute('LISTEN "%s"' % event)
-        conn.commit()
-
-        while not self._stopper.is_set():
-            r, _, _ = select.select([conn], [], [], 60)
-            if not r:
-                continue
-            conn.poll()
-            while conn.notifies:
-                message = conn.notifies.pop()
-
-                if not self._bound_callbacks.get(message.channel):
-                    cur = conn.cursor()
-                    cur.execute('UNLISTEN "%s"' % message.channel)
-                    conn.execute()
-                    continue
-
-                if message.pid == os.getpid():
-                    continue
-
-                args, kwargs = json.loads(message.payload)
-                self._dispatch_local_events([message.channel], args, kwargs)
-
-        self._pool.putconn(conn)
-
     def acquire(self, tid):
 
         with self._cursor() as cur:
@@ -381,29 +340,47 @@ class PostgresBroker(Broker):
 
             cur.execute('UPDATE tasks SET first_active = %s, last_active = %s WHERE id = %s', [current_time, current_time, tid])
 
-        # Spin up the heartbeat thread.
-        # TODO: add this to the event loop, somehow.
-        with self._heartbeat_lock:
-            self._captured_tids.append(tid)
-            if not self._heartbeat_thread:
-                self._heartbeat_thread = threading.Thread(target=self._heartbeat)
-                self._heartbeat_thread.daemon = True
-                self._heartbeat_thread.start()
-
         return True
 
     def release(self, tid):
         with self._cursor() as cur:
             cur.execute('UPDATE tasks SET last_active = NULL WHERE id = %s', [tid])
+
+    def _on_heartbeat(self):
         with self._heartbeat_lock:
-            self._captured_tids.remove(tid)
+            if self._captured_tids:
+                with self._cursor() as cur:
+                    cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = ANY(%s)', [list(self._captured_tids)])
 
-    def _heartbeat(self):
-        while not self._stopper.is_set():
-            with self._heartbeat_lock:
-                if self._captured_tids:
-                    with self._cursor() as cur:
-                        cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = ANY(%s)', [list(self._captured_tids)])
-            time.sleep(15)
+    def to_select(self):
 
+        if not self._notify_conn:
+            self._notify_conn = self._pool.getconn()
+
+        to_listen = [e for e in self._bound_callbacks if e not in self._listening_to]
+        to_unlisten = self._listening_to.difference(self._bound_callbacks)
+        if to_listen or to_unlisten:
+            cur = self._notify_conn.cursor()
+            for e in to_listen:
+                cur.execute('LISTEN "%s"' % e)
+                self._listening_to.add(e)
+            for e in to_unlisten:
+                cur.execute('UNLISTEN "%s"' % e)
+                self._listening_to.remove(e)
+            self._notify_conn.commit()
+
+        return [self._notify_conn.fileno()], (), ()
+
+    def on_select(self, r, w, x):
+
+        if not r:
+            return
+
+        self._notify_conn.poll()
+        while self._notify_conn.notifies:
+            message = self._notify_conn.notifies.pop()
+            if message.pid == os.getpid():
+                continue
+            args, kwargs = json.loads(message.payload)
+            self._dispatch_local_events([message.channel], args, kwargs)
 
