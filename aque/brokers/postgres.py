@@ -107,13 +107,12 @@ class PostgresBroker(Broker):
         self._notify_conn = None
         self._notify_lock = threading.Lock()
         self._notify_thread = None
-        
-        super(PostgresBroker, self).__init__()
 
         self._kwargs = kwargs
         self._pool = self._open_pool()
-
         self._reflect()
+
+        super(PostgresBroker, self).__init__()
 
 
         self._heartbeat_lock = threading.Lock()
@@ -142,7 +141,6 @@ class PostgresBroker(Broker):
     @contextlib.contextmanager
     def _connect(self):
         conn = self._pool.getconn()
-        # conn.initialize(logging.getLogger('aque.sql'))
         try:
             yield conn
             conn.commit()
@@ -268,19 +266,23 @@ class PostgresBroker(Broker):
             cur.execute('DELETE FROM tasks WHERE id = ANY(%s)', [tids])
             cur.execute('DELETE FROM output_logs WHERE task_id = ANY(%s)', [tids])
     
-    def bind(self, event, callback):
-        super(PostgresBroker, self).bind(event, callback)
-        if self._notify_conn and len(self._bound_callbacks[event]) == 1:
-            cur = self._notify_connection.cursor()
+    def bind(self, event, callback=None):
+        x = super(PostgresBroker, self).bind(event, callback)
+        if x:
+            return x
+        if self._notify_conn is not None:
+            cur = self._notify_conn.cursor()
             cur.execute('LISTEN "%s"' % event)
-            self._notify_connection.commit()
+            self._notify_conn.commit()
+
+        self._notify_start()
 
     def unbind(self, event, callback):
         super(PostgresBroker, self).bind(event, callback)
         if self._notify_conn and not self._bound_callbacks[event]:
-            cur = self._notify_connection.cursor()
+            cur = self._notify_conn.cursor()
             cur.execute('UNLISTEN "%s"' % event)
-            self._notify_connection.commit()
+            self._notify_conn.commit()
 
     def _send_remote_events(self, events, args, kwargs):
         payload = json.dumps([args, kwargs])
@@ -369,7 +371,7 @@ class PostgresBroker(Broker):
                 log.debug('capturing task %d failed; currently %ss old' % (tid, age))
                 return
 
-            cur.execute('UPDATE tasks SET last_active = %s WHERE id = %s', [current_time, tid])
+            cur.execute('UPDATE tasks SET first_active = %s, last_active = %s WHERE id = %s', [current_time, current_time, tid])
 
         # Spin up the heartbeat thread.
         # TODO: add this to the event loop, somehow.
