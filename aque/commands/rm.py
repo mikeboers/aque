@@ -39,10 +39,10 @@ def rm(args):
         filter_ = base_filter.copy()
         if status:
             filter_['status'] = status
-        for task in args.broker.iter_tasks(**filter_):
+        for task in args.broker.search(filter_, ['id']):
             if args.verbose:
                 print task['id']
             to_delete.append(task['id'])
 
-    args.broker.delete_many(to_delete)
+    args.broker.delete(to_delete)
     print 'removed', len(to_delete), 'tasks'
