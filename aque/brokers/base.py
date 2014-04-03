@@ -197,7 +197,7 @@ class Broker(object):
 
     def log_output_and_notify(self, tid, fd, content):
         self._log_output(tid, fd, content)
-        self.trigger(['output_log', 'output_log[%d]' % tid], fd, content)
+        self.trigger(['output_log', 'output_log.%d' % tid], fd, content)
 
     def _log_output(self, tid, fd, content):
         pass

@@ -7,7 +7,7 @@ import shlex
 
 import psutil
 
-from aque.commands.main import command, argument
+from aque.commands.main import main, command, argument
 
 
 def grouper(iterable, n, fillvalue=None):
@@ -34,6 +34,7 @@ def tokenize_words(count):
     argument('-n', '--words', type=int),
     argument('-P', '--maxprocs', type=int),
     argument('-c', '--cpus', type=int),
+    argument('-w', '--watch', action='store_true'),
     argument('command', nargs=argparse.REMAINDER),
     help='schedule a series of commands like xargs',
 )
@@ -65,5 +66,11 @@ def xargs(args):
     if args.verbose:
         print '\n'.join(str(tid) for tid in sorted(f.id for f in future_map.itervalues()))
     future = args.queue.submit_ex(pattern=None, dependencies=future_map.values())
+
+    if args.watch:
+        args = ['output', '--watch']
+        args.extend(str(f.id) for f in future_map.itervalues())
+        args.append(str(future.id))
+        return main(args)
 
     print future.id

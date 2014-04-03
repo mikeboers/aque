@@ -107,6 +107,8 @@ class EventLoop(object):
         selected = [set(x) for x in selected]
 
         # Trigger some timers!
+        # Notice that we will only trigger the timer once even if it would have
+        # triggered several times since it was run last.
         self._last_time = current_time = time.time() - self._zero_time
         for next_tick, func in timers:
             if current_time >= next_tick:

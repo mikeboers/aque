@@ -2,7 +2,7 @@ import argparse
 import os
 import sys
 
-from aque.commands.main import command, argument
+from aque.commands.main import main, command, argument
 
 
 @command(
@@ -12,7 +12,7 @@ from aque.commands.main import command, argument
     argument('--stdout-path'),
     argument('--stderr-path'),
     argument('-q', '--quiet', action='store_true'),
-    argument('-w', '--wait', action='store_true'),
+    argument('-w', '--watch', action='store_true'),
     argument('-t', '--timeout', type=float),
     argument('command', nargs=argparse.REMAINDER),
     help='schedule a shell command',
@@ -34,17 +34,9 @@ def submit(args):
         print >> sys.stderr, cmd, kwargs
 
     future = args.queue.submit_ex(pattern='shell', args=cmd, kwargs=kwargs)
-    if args.wait:
-        try:
-            res = future.result(args.timeout)
-        except Exception as e:
-            if not args.quiet:
-                print e.__class__.__name__, e
-            return 1
-        else:
-            if not args.quiet:
-                print repr(res)
-            return 0
-    else:
-        if not args.quiet:
-            print future.id
+
+    if args.watch:
+        return main(['output', '--watch', str(future.id)])
+
+    if not args.quiet:
+        print future.id
