@@ -145,7 +145,7 @@ class Broker(object):
         for event in events:
             for callback in self._bound_callbacks.get(event, ()):
                 try:
-                    log.debug('dispatching %s to %s(*%r, **%r)' % (event, encode_callable(callback), args, kwargs))
+                    log.debug('dispatching %s to 0x%x %s(*%r, **%r)' % (event, id(callback), encode_callable(callback), args, kwargs))
                     callback(*args, **kwargs)
                 except StandardError:
                     log.exception('error during event callback')

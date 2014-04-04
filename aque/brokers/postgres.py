@@ -110,7 +110,7 @@ class PostgresBroker(Broker):
     def __init__(self, **kwargs):
 
         self._kwargs = kwargs
-        self._pool = self._open_pool()
+        self._open_pool()
         self._reflect()
 
         super(PostgresBroker, self).__init__()
@@ -129,16 +129,19 @@ class PostgresBroker(Broker):
         return (_unpickle, (self._kwargs, ))
 
     def _open_pool(self):
-        return pg.pool.ThreadedConnectionPool(0, 4 * psutil.cpu_count(), **self._kwargs)
+        self._pool = pg.pool.ThreadedConnectionPool(0, 4 * psutil.cpu_count(), **self._kwargs)
 
     def after_fork(self):
-        self._pool = self._open_pool()
+        self._open_pool()
 
     def __del__(self):
         self.close()
 
     def close(self):
         self._event_loop.stop_thread()
+        if self._notify_conn:
+            self._pool.putconn(self._notify_conn)
+            self._notify_conn = None
         if self._pool:
             self._pool.closeall()
             self._pool = None

@@ -57,7 +57,11 @@ def main(argv=None):
 
     args.broker = get_broker(args.broker_url)
     args.queue = Queue(args.broker)
-    res = args.func(args) or 0
+    
+    try:
+        res = args.func(args) or 0
+    finally:
+        args.broker.close()
 
     if __name__ == '__main__':
         exit(res)
