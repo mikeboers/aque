@@ -12,6 +12,7 @@ import threading
 import time
 import traceback
 import subprocess
+import multiprocessing
 
 import psutil
 
@@ -111,15 +112,26 @@ class ProcJob(BaseJob):
             str(self.id), # so that `top` and `ps` show something more interesting
         ))
 
-        encoded_package = pickle.dumps((self.broker, self.task))
 
         o_rfd, o_wfd = os.pipe()
         e_rfd, e_wfd = os.pipe()
 
         # Start the actuall subprocess.
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=o_wfd, stderr=e_wfd, close_fds=True)
-        self.proc.stdin.write(encoded_package)
-        self.proc.stdin.close()
+        if True:
+            encoded_package = pickle.dumps((self.broker, self.task))
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=o_wfd, stderr=e_wfd, close_fds=True)
+            self.proc.stdin.write(encoded_package)
+            self.proc.stdin.close()
+            self.is_alive = lambda: not (self.proc.poll() or self.proc.returncode is not None)
+
+        else:
+            i_rfd, i_wfd = os.pipe()
+            self.proc = multiprocessing.Process(target=self._target, args=(i_rfd, o_wfd, e_wfd))
+            self.proc.start()
+            self.is_alive = self.proc.is_alive
+
+            os.close(i_rfd)
+            os.close(i_wfd)
 
         os.close(o_wfd)
         os.close(e_wfd)
@@ -147,10 +159,8 @@ class ProcJob(BaseJob):
                     os.close(rfd)
                     del self.fd_map[rfd]
 
-        self.proc.poll()
-
         has_fds = self.fd_map
-        has_life = self.proc.returncode is None
+        has_life = self.is_alive()
 
         if not has_fds and not has_life:
             log.log(5, 'proc %d for task %d joined' % (self.proc.pid, self.id))
@@ -159,8 +169,19 @@ class ProcJob(BaseJob):
         elif not (has_fds and has_life) and (has_fds or has_life):
             log.log(5, 'proc %d for task %d is about to die; only %s' % (self.proc.pid, self.id, 'has fds' if has_fds else 'has life'))
         
-        log.log(5, 'proc %d alive: %s, rfds: %s' % (self.proc.pid, self.proc.returncode is not None, rfds))
+        else:
+            log.log(5, 'proc %d is alive with rfds %s' % (self.proc.pid, rfds))
 
+    def _target(self, i_rfd, o_wfd, e_wfd):
+        self.broker.after_fork()
+        self.bootstrap()
+        os.dup2(i_rfd, 0)
+        os.close(i_rfd)
+        os.dup2(o_wfd, 1)
+        os.close(o_wfd)
+        os.dup2(e_wfd, 2)
+        os.close(e_wfd)
+        self.execute()
 
     def bootstrap(self):
 
