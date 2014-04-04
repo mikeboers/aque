@@ -7,25 +7,26 @@ from aque.commands.main import main, command, argument
 
 @command(
     argument('--cwd'),
-    argument('-i', '--stdin'),
-    argument('--stdin-path'),
-    argument('--stdout-path'),
-    argument('--stderr-path'),
-    argument('-q', '--quiet', action='store_true'),
     argument('-w', '--watch', action='store_true'),
     argument('-t', '--timeout', type=float),
+    argument('-s', '--shell', action='store_true'),
     argument('command', nargs=argparse.REMAINDER),
     help='schedule a shell command',
     aliases=['s', 'sub'],
 )
 def submit(args):
 
-    cmd = args.command
+    cmd = list(args.command)
+    if args.shell:
+        cmd.insert(0, os.environ.get('SHELL', '/bin/bash'))
+        cmd.insert(1, '-c')
+        cmd.insert(3, 'aque-submit')
+
     kwargs = {
         'cwd': os.getcwd()
     }
 
-    for k in ('stdin_path', 'stdout_path', 'stderr_path', 'stdin', 'cwd'):
+    for k in ('cwd', ):
         v = getattr(args, k, None)
         if v is not None:
             kwargs[k] = getattr(args, k)
@@ -38,5 +39,4 @@ def submit(args):
     if args.watch:
         return main(['output', '--watch', str(future.id)])
 
-    if not args.quiet:
-        print future.id
+    print future.id

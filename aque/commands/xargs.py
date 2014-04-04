@@ -2,6 +2,7 @@ from __future__ import division
 
 import argparse
 import itertools
+import os
 import sys
 import shlex
 
@@ -35,6 +36,7 @@ def tokenize_words(count):
     argument('-P', '--maxprocs', type=int),
     argument('-c', '--cpus', type=int),
     argument('-w', '--watch', action='store_true'),
+    argument('-s', '--shell', action='store_true'),
     argument('command', nargs=argparse.REMAINDER),
     help='schedule a series of commands like xargs',
 )
@@ -56,9 +58,16 @@ def xargs(args):
     else:
         cpus = None
 
+
     prototypes = []
     for tokens in token_iter:
+
         cmd = list(args.command)
+        if args.shell:
+            cmd.insert(0, os.environ.get('SHELL', '/bin/bash'))
+            cmd.insert(1, '-c')
+            cmd.insert(3, 'aque-submit')
+
         cmd.extend(t for t in tokens if t is not None)
         prototypes.append(dict(pattern='shell', args=cmd, cpus=cpus))
 

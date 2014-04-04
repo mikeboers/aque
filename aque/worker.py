@@ -108,7 +108,7 @@ class ProcJob(BaseJob):
 
         # Start the actuall subprocess.
         if self.task.get('interpreter'):
-            
+
             cmd = []
             if 'KS_DEV_ARGS' in os.environ:
                 cmd.extend(('dev', '--bootstrap'))
@@ -173,14 +173,17 @@ class ProcJob(BaseJob):
             log.log(5, 'proc %d is alive with rfds %s' % (self.proc.pid, rfds))
 
     def _target(self, i_rfd, o_wfd, e_wfd):
+
         self.broker.after_fork()
         self.bootstrap()
+        
         os.dup2(i_rfd, 0)
         os.close(i_rfd)
         os.dup2(o_wfd, 1)
         os.close(o_wfd)
         os.dup2(e_wfd, 2)
         os.close(e_wfd)
+
         self.execute()
 
     def bootstrap(self):
