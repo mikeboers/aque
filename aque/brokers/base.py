@@ -167,7 +167,7 @@ class Broker(object):
             raise ValueError('bad status %r' % status)
         tids = [tids] if isinstance(tids, int) else list(tids)
         self._set_status(tids, status, result)
-        events = ['task_status'] + ['task_status.%d' % tid for tid in tids]
+        events = ['task_status', 'task_status.%s' % status] + ['task_status.%d' % tid for tid in tids]
         self.trigger(events, tids, status)
 
     def _on_task_status(self, tids, status):
