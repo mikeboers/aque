@@ -35,7 +35,8 @@ def output(args):
         sys.stdout.flush()
 
     if not any(t['status'] == 'pending' for t in args.broker.fetch(args.tids).itervalues()):
-        return
+        watching = set()
+        queue.put(None)
 
     if args.watch:
         while watching:
