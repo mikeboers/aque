@@ -108,6 +108,7 @@ class ProcJob(BaseJob):
         cmd.extend((
             self.task.get('interpreter') or sys.executable,
             '-m', 'aque.workersandbox.thecorner',
+            str(self.id), # so that `top` and `ps` show something more interesting
         ))
 
         encoded_package = pickle.dumps((self.broker, self.task))
