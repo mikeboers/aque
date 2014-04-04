@@ -231,6 +231,7 @@ class Worker(object):
         self.broker = get_broker(broker)
         self._event_loop = self.broker._event_loop
         self._stopper = threading.Event()
+        self.broker.bind('task_status.pending', lambda *args, **kwargs: None)
 
     def stop(self):
         self._stopper.set()
@@ -338,7 +339,6 @@ class Worker(object):
         return count
 
     def _run(self, count, wait_for_more):
-
         try:
             self._stopper.clear()
             self._event_loop.stop_thread()
@@ -356,9 +356,9 @@ class Worker(object):
 
             # TODO: longer timeout once we listen to pending task events
             active_jobs = [x for x in self._event_loop.active if isinstance(x, BaseJob)]
+            log.info("%d active jobs: %s" % (len(active_jobs), ', '.join(str(job.id) for job in active_jobs)))
             if active_jobs:
-                log.log(5, "%d active jobs: %s" % (len(active_jobs), ', '.join(str(job.id) for job in active_jobs)))
-                self._event_loop.process(timeout=1.0)
+                self._event_loop.process(timeout=15.0)
 
             # Deal with any jobs that just stopped.
             job_just_finished = False
@@ -374,7 +374,7 @@ class Worker(object):
                 if wait_for_more:
                     # XXX: don't need this once the above timeout is higher
                     log.info('waiting for more work...')
-                    time.sleep(1)
+                    self._event_loop.process(timeout=60.0)
                 else:
                     raise StopIteration()
 

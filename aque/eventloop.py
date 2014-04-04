@@ -114,9 +114,6 @@ class EventLoop(object):
                 for all_, new in zip(to_select, fds):
                     all_.extend(new)
 
-        # Bail if it is only the interrupt we are listening to.
-        if sum(map(len, to_select)) == 1 and not self.timers:
-            return
 
         # Establish when the next timer will tick, and adjust timeout accordingly.
         current_time = time.time() - self._zero_time
@@ -128,7 +125,11 @@ class EventLoop(object):
             timeout = time_to_next_tick if timeout is None else min(timeout, time_to_next_tick)
         timeout = None if timeout is None else max(0, timeout)
 
-        log.log(5, '%d fds to select from %d objects and %d timers' % (sum(map(len, to_select)), len(self.active), len(self.timers)))
+        log.log(5, '%d fds to select from %d objects and %d timers over %ss' % (sum(map(len, to_select)), len(self.active), len(self.timers), timeout))
+        
+        # Bail if it is only the interrupt we are listening to.
+        if sum(map(len, to_select)) == 1 and not self.timers:
+            return
 
         selected = select(to_select[0], to_select[1], to_select[2], timeout)
         selected = [set(x) for x in selected]
