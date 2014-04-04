@@ -163,7 +163,7 @@ class Broker(object):
         return self._futures.setdefault(tid, Future(self, tid))
 
     def set_status_and_notify(self, tids, status, result=None):
-        if status not in ('pending', 'success', 'error'):
+        if status not in ('pending', 'killed', 'success', 'error'):
             raise ValueError('bad status %r' % status)
         tids = [tids] if isinstance(tids, int) else list(tids)
         self._set_status(tids, status, result)

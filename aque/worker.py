@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import traceback
+import signal
 
 import psutil
 
@@ -70,6 +71,7 @@ class BaseJob(object):
         
         except Exception as e:
             self.broker.set_status_and_notify(self.id, 'error', e)
+            log.exception('error during execution')
 
         else:
             self.broker.set_status_and_notify(self.id, 'success', res)
@@ -102,6 +104,8 @@ class ThreadJob(BaseJob):
 class ProcJob(BaseJob):
 
     def start(self):
+
+        self.broker.bind('signal_task.%d' % self.id, self.on_signaled)
 
         o_rfd, o_wfd = os.pipe()
         e_rfd, e_wfd = os.pipe()
@@ -207,6 +211,17 @@ class ProcJob(BaseJob):
 
         os.chdir(self.task['cwd'])
 
+    def on_signaled(self, tids, signal):
+        if self.proc.pid and self.is_alive():
+            # TODO: make this a little more forgiving
+            os.kill(self.proc.pid, signal)
+            log.info('task %d was send signal %d' % (self.id, signal))
+
+    def close(self):
+        self.broker.unbind('signal_task.%d' % self.id, self.on_signaled)
+
+
+
 
 def procjob_execute():
     """Called within the subprocess to actually do the work."""
@@ -215,6 +230,7 @@ def procjob_execute():
     job = ProcJob(broker, task)
     job.bootstrap()
     job.execute()
+    job.cleanup()
 
 
 

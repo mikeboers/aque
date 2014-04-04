@@ -31,6 +31,7 @@ setup(
             'redis = aque.brokers.redis:RedisBroker',
         ],
         'aque_commands': [
+            'kill = aque.commands.kill:kill',
             'init = aque.commands.init:init',
             'output = aque.commands.output:output',
             'rm = aque.commands.rm:rm',
