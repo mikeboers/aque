@@ -15,9 +15,9 @@ from aque.commands.main import command, argument
 def output(args):
 
     if args.watch:
-
-        queue = Queue()
+        
         watching = set(args.tids)
+        queue = Queue()
 
         @args.broker.bind(['output_log.%d' % x for x in args.tids])
         def on_log(fd, content):
@@ -37,17 +37,18 @@ def output(args):
         sys.stdout.write(content)
         sys.stdout.flush()
 
-    found = args.broker.fetch(args.tids)
-    watching.intersection_update(found)
-    for task in found.itervalues():
-        if task['status'] != 'pending':
-            try:
-                watching.remove(task['id'])
-            except KeyError:
-                pass
-    queue.put(None)
-
     if args.watch:
+
+        found = args.broker.fetch(args.tids)
+        watching.intersection_update(found)
+        for task in found.itervalues():
+            if task['status'] != 'pending':
+                try:
+                    watching.remove(task['id'])
+                except KeyError:
+                    pass
+        queue.put(None)
+
         while watching:
             event_args = queue.get()
             if event_args is None:
