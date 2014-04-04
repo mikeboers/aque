@@ -4,6 +4,12 @@
 
 - logging in subprocesses should be put through to a special pipe, or perhaps
   through a socket of some sort
+  - the logs should be attributes of workers, jobs, queues, brokers, etc, and
+    those ones should be modified so they pipe back to their counterparts
+    and then don't go further up the chain. This will allow existing logging
+    to actually work
+
+- preserve environment; stuff os.environ into task['environ'] ?
 
 - is there a way of detecting what the mount point is for various io_paths and
   making sure that it corresponds?
