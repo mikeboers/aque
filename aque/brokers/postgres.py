@@ -132,6 +132,14 @@ class PostgresBroker(Broker):
         self._pool = pg.pool.ThreadedConnectionPool(0, 4 * psutil.cpu_count(), **self._kwargs)
 
     def after_fork(self):
+
+        # Force the pool closed at an OS level so that it won't mess with
+        # the parent's use of them.
+        if self._pool:
+            for conn in self._pool._pool + list(self._pool._used.values()):
+                os.close(conn.fileno())
+            self._notify_conn = None
+
         self._open_pool()
 
     def __del__(self):
