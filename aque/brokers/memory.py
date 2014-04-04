@@ -2,7 +2,8 @@ import logging
 import threading
 
 import aque.utils as utils
-from .base import Broker
+from aque.brokers.base import Broker
+from aque.eventloop import SelectableEvent
 
 
 log = logging.getLogger(__name__)
@@ -18,6 +19,8 @@ class MemoryBroker(Broker):
         self._id_lock = threading.Lock()
         self._init()
         self._binds = {}
+        self._event = SelectableEvent()
+        self._event_loop.add(self)
 
     def _init(self):
         self._tasks = {}
@@ -64,4 +67,15 @@ class MemoryBroker(Broker):
                 if task.get(k) != v:
                     continue
             yield task.copy()
+
+    def _send_remote_events(self, *args):
+        self._event.set()
+
+    def to_select(self):
+        return [self._event.fileno()], [], []
+
+    def on_select(self, r, w, x):
+        if r:
+            self._event.clear()
+
 
