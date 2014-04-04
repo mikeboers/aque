@@ -15,47 +15,58 @@ from aque.commands.main import command, argument
 def output(args):
 
     if args.watch:
-        
+
         watching = set(args.tids)
         queue = Queue()
 
         @args.broker.bind(['output_log.%d' % x for x in args.tids])
-        def on_log(fd, content):
-            queue.put((fd, content))
+        def on_log(tid, fd, offset, content):
+            queue.put((tid, fd, offset, content))
 
         @args.broker.bind(['task_status.%s' % x for x in args.tids])
         def on_status(tids, status):
             if status in ('success', 'error'):
-                for x in tids:
-                    try:
-                        watching.remove(x)
-                    except KeyError:
-                        pass
-                    queue.put(None)
-
-    for tid, ctime, fd, content in args.broker.get_output(args.tids):
-        sys.stdout.write(content)
-        sys.stdout.flush()
-
-    if args.watch:
+                for tid in tids:
+                    queue.put((tid, None, None, None))
 
         found = args.broker.fetch(args.tids)
         watching.intersection_update(found)
         for task in found.itervalues():
             if task['status'] != 'pending':
+                queue.put((task['id'], None, None, None))
+
+        queue.put((None, None, None, None))
+
+    max_offsets = {1: -1, 2: -1}
+
+    for tid, ctime, fd, offset, content in args.broker.get_output(args.tids):
+        stream = {1: sys.stdout, 2: sys.stderr}.get(fd)
+        if stream:
+            max_offsets[fd] = max(max_offsets[fd], offset)
+            stream.write(content)
+            stream.flush()
+
+    if args.watch:
+        while watching:
+
+            tid, fd, offset, content = queue.get()
+            if fd is None:
                 try:
-                    watching.remove(task['id'])
+                    watching.remove(tid)
                 except KeyError:
                     pass
-        queue.put(None)
-
-        while watching:
-            event_args = queue.get()
-            if event_args is None:
                 continue
-            fd, content = event_args
-            sys.stdout.write(content)
-            sys.stdout.flush()
+
+            stream = {1: sys.stdout, 2: sys.stderr}.get(fd)
+            if stream:
+
+                if offset <= max_offsets[fd]:
+                    continue
+                else:
+                    max_offsets[fd] = offset
+
+                stream.write(content)
+                stream.flush()
 
 
 

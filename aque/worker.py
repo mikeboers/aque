@@ -137,8 +137,12 @@ class ProcJob(BaseJob):
         os.close(e_wfd)
 
         self.fd_map = {
+            o_rfd: 1,
+            e_rfd: 2,
+        }
+        self.fd_offsets = {
             o_rfd: 0,
-            e_rfd: 1,
+            e_rfd: 0,
         }
 
         log.log(5, 'proc %d for task %d started' % (self.proc.pid, self.id))
@@ -154,7 +158,8 @@ class ProcJob(BaseJob):
                 x = os.read(rfd, 65536)
                 if x:
                     log.log(5, '%d piped %s' % (self.id, x.encode('string-escape')))
-                    self.broker.log_output_and_notify(self.id, to_fd, x)
+                    self.broker.log_output_and_notify(self.id, to_fd, self.fd_offsets[rfd], x)
+                    self.fd_offsets[rfd] += len(x)
                 else:
                     os.close(rfd)
                     del self.fd_map[rfd]

@@ -87,6 +87,7 @@ def create_output_log_table(cur):
         task_id SERIAL NOT NULL,
         ctime TIMESTAMP NOT NULL DEFAULT localtimestamp,
         fd SMALLINT NOT NULL,
+        "offset" INT NOT NULL,
         content TEXT NOT NULL
     )''')
     cur.execute('CREATE INDEX output_logs_index ON output_logs (task_id)')
@@ -303,18 +304,16 @@ class PostgresBroker(Broker):
         with self._cursor() as cur:
             cur.execute('''UPDATE tasks SET status = %s, result = %s WHERE id = ANY(%s)''', [status, encoded, tids])
 
-    def _log_output(self, tid, fd, content):
+    def _log_output(self, tid, fd, offset, content):
         with self._cursor() as cur:
-            cur.execute('INSERT INTO output_logs (task_id, fd, content) VALUES (%s, %s, %s)', [
-                tid,
-                fd,
-                content.encode('string-escape'),
+            cur.execute('INSERT INTO output_logs (task_id, fd, "offset", content) VALUES (%s, %s, %s, %s)', [
+                tid, fd, offset, content.encode('string-escape'),
             ])
 
     def get_output(self, tids):
         with self._cursor() as cur:
-            cur.execute('SELECT task_id, ctime, fd, content FROM output_logs WHERE task_id = ANY(%s) ORDER BY ctime', [tids])
-            return [(task_id, ctime, fd, content.decode('string-escape')) for task_id, ctime, fd, content in cur]
+            cur.execute('SELECT task_id, ctime, fd, "offset", content FROM output_logs WHERE task_id = ANY(%s) ORDER BY ctime', [tids])
+            return [(task_id, ctime, fd, offset, content.decode('string-escape')) for task_id, ctime, fd, offset, content in cur]
 
     def search(self, filter=None, fields=None):
 

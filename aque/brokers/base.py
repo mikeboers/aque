@@ -202,9 +202,9 @@ class Broker(object):
     def _set_status(self, tids, status, result):
         pass
 
-    def log_output_and_notify(self, tid, fd, content):
-        self._log_output(tid, fd, content)
-        self.trigger(['output_log', 'output_log.%d' % tid], fd, content)
+    def log_output_and_notify(self, tid, fd, offset, content):
+        self._log_output(tid, fd, offset, content)
+        self.trigger(['output_log', 'output_log.%d' % tid], tid, fd, offset, content)
 
     def _log_output(self, tid, fd, content):
         pass
