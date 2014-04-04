@@ -27,16 +27,25 @@ def output(args):
         def on_status(tids, status):
             if status in ('success', 'error'):
                 for x in tids:
-                    watching.remove(x)
+                    try:
+                        watching.remove(x)
+                    except KeyError:
+                        pass
                     queue.put(None)
 
     for tid, ctime, fd, content in args.broker.get_output(args.tids):
         sys.stdout.write(content)
         sys.stdout.flush()
 
-    if not any(t['status'] == 'pending' for t in args.broker.fetch(args.tids).itervalues()):
-        watching = set()
-        queue.put(None)
+    found = args.broker.fetch(args.tids)
+    watching.intersection_update(found)
+    for task in found.itervalues():
+        if task['status'] != 'pending':
+            try:
+                watching.remove(task['id'])
+            except KeyError:
+                pass
+    queue.put(None)
 
     if args.watch:
         while watching:
