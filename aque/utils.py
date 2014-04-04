@@ -21,6 +21,16 @@ def debug(msg):
         print 'DEBUG: %s [%s:%d]' % (msg, f.f_globals.get('__file__', ''), f.f_lineno)
 
 
+def safe_unpickle(input_):
+    try:
+        return pickle.loads(str(input_))
+    except (PickleError, ) as e:
+        raise
+    except (TypeError, ValueError, ImportError) as e:
+        log.exception('pickle is unpicklable in current environment')
+        return None
+
+
 def encode_callable(input_):
 
     if input_ is None:

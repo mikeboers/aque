@@ -239,7 +239,7 @@ class PostgresBroker(Broker):
 
     def _decode(self, field, x):
         if isinstance(x, buffer):
-            return pickle.loads(x)
+            return utils.safe_unpickle(x)
         else:
             return x
 
