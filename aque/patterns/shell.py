@@ -30,29 +30,13 @@ def do_shell_task(task):
     env['AQUE_TID'] = str(task['id'])
     kwargs['env'] = env
     
-    proc = None
-    def handler(signal, frame):
-        log.info('caught signal %d; forwarding to proc' % signal)
-        if proc:
-            proc.send_signal(signal)
-
-    # Forward signals to our subproc; can't catch SIGKILL, unfortunately.
-    signals = (signal.SIGTERM, signal.SIGINT)
-    handlers = [signal.signal(sig, handler) for sig in signals]
-
-    try:
-        proc = subprocess.Popen(cmd, **kwargs)
-        if stdin_content:
-            proc.stdin.write(stdin_content)
-            proc.stdin.close()
-        code = proc.wait()
-        if code:
-            raise subprocess.CalledProcessError(code, cmd)
-        else:
-            return 0
-
-    finally:
-        # Restore the signal handlers (just in case this isn't a forking broker).
-        for sig, handler in zip(signals, handlers):
-            signal.signal(sig, handler)
+    proc = subprocess.Popen(cmd, **kwargs)
+    if stdin_content:
+        proc.stdin.write(stdin_content)
+        proc.stdin.close()
+    code = proc.wait()
+    if code:
+        raise subprocess.CalledProcessError(code, cmd)
+    else:
+        return 0
 

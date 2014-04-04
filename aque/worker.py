@@ -197,6 +197,10 @@ class ProcJob(BaseJob):
 
     def bootstrap(self):
 
+        # So that signals from `aque kill` will be passed down to any
+        # child processes (many of which come from the "shell" pattern).
+        os.setsid()
+
         if IS_ROOT:
 
             # Drop permissions.
@@ -213,9 +217,8 @@ class ProcJob(BaseJob):
 
     def on_signaled(self, tids, signal):
         if self.proc.pid and self.is_alive():
-            # TODO: make this a little more forgiving
-            os.kill(self.proc.pid, signal)
-            log.info('task %d was send signal %d' % (self.id, signal))
+            os.killpg(os.getpgid(self.proc.pid), signal)
+            log.info('task %d was sent signal %d' % (self.id, signal))
 
     def close(self):
         self.broker.unbind('signal_task.%d' % self.id, self.on_signaled)
