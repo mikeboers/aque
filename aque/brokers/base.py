@@ -40,6 +40,9 @@ class Broker(object):
         self._futures = weakref.WeakValueDictionary()
         self._bound_callbacks = {}
 
+        # The event loop is set after the bind so that the bind does not
+        # trigger the event loop to actually start. As of writing, that is
+        # on the broker's themselves to manage.
         self._event_loop = None
         self.bind('task_status', self._on_task_status)
         self._event_loop = EventLoop()

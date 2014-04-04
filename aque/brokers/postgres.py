@@ -92,6 +92,11 @@ def create_output_log_table(cur):
     cur.execute('CREATE INDEX output_logs_index ON output_logs (task_id)')
 
 
+def _unpickle(kwargs):
+    return PostgresBroker(**kwargs)
+_unpickle.__safe_for_unpickling__ = True
+
+
 class PostgresBroker(Broker):
     """A :class:`.Broker` which uses Postgresql_ as a data store and event dispatcher.
 
@@ -119,6 +124,9 @@ class PostgresBroker(Broker):
         self._notify_conn = None
         self._listening_to = set()
         self._event_loop.add(self)
+
+    def __reduce__(self):
+        return (_unpickle, (self._kwargs, ))
 
     def _open_pool(self):
         return pg.pool.ThreadedConnectionPool(0, 4 * psutil.cpu_count(), **self._kwargs)

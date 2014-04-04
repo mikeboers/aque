@@ -2,8 +2,8 @@ import contextlib
 import grp
 import itertools
 import logging
-import multiprocessing
 import os
+import pickle
 import pprint
 import pwd
 import select
@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import traceback
+import subprocess
 
 import psutil
 
@@ -35,17 +36,14 @@ LOGIN = pwd.getpwuid(os.getuid()).pw_name
 
 class BaseJob(object):
 
-    def __init__(self, worker, task):
+    def __init__(self, broker, task):
 
-        self.worker = worker
-        self.broker = worker.broker
+        self.broker = broker
         self.task = task
         self.id = task['id']
 
-        self.finished = SelectableEvent()
-
     def close(self):
-        self.finished.close()
+        pass
 
     def start(self):
         pass
@@ -75,15 +73,16 @@ class BaseJob(object):
         else:
             self.broker.set_status_and_notify(self.id, 'success', res)
 
-        finally:
-            self.finished.set()
-
 
 class ThreadJob(BaseJob):
 
     def start(self):
+        self.finished = SelectableEvent()
         self.thread = threading.Thread(target=self.execute)
         self.thread.start()
+
+    def close(self):
+        self.finished.close()
 
     def to_select(self):
         return [self.finished.fileno()], [], []
@@ -92,58 +91,65 @@ class ThreadJob(BaseJob):
         if not self.thread.is_alive() or self.finished.is_set():
             raise StopSelection()
 
+    def execute(self):
+        try:
+            super(ThreadJob, self).execute()
+        finally:
+            self.finished.set()
+
 
 class ProcJob(BaseJob):
 
     def start(self):
 
-        # We create a new set of pipes for standard IO, so that we may
-        # capture and/or manipulate them outselves.
+        cmd = []
+        if 'KS_DEV_ARGS' in os.environ:
+            cmd.extend(('dev', '--bootstrap'))
+        cmd.extend((
+            self.task.get('interpreter') or sys.executable,
+            '-m', 'aque.workersandbox.thecorner',
+        ))
+
+        encoded_package = pickle.dumps((self.broker, self.task))
+
         o_rfd, o_wfd = os.pipe()
         e_rfd, e_wfd = os.pipe()
 
-        self.canonical_fds = {
-            o_rfd: 1,
-            e_rfd: 2,
-        }
-
         # Start the actuall subprocess.
-        self.proc = multiprocessing.Process(target=self.target, args=(o_wfd, e_wfd))
-        self.proc.start()
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=o_wfd, stderr=e_wfd, close_fds=True)
+        self.proc.stdin.write(encoded_package)
+        self.proc.stdin.close()
 
-        log.log(5, 'proc %d for task %d started' % (self.proc.pid, self.id))
-
-        # Close our copies of the write end of the pipes.
         os.close(o_wfd)
         os.close(e_wfd)
 
+        self.fd_map = {
+            o_rfd: 0,
+            e_rfd: 1,
+        }
+
+        log.log(5, 'proc %d for task %d started' % (self.proc.pid, self.id))
+
     def to_select(self):
-        rfds = self.canonical_fds.keys()
-        if self.proc.is_alive():
-            rfds.append(self.finished.fileno())
-        if not rfds:
-            log.log(5, 'proc %d for task %d joined' % (self.proc.pid, self.id))
-            raise StopSelection()
-        return rfds, [], []
+        return self.fd_map.keys(), [], []
 
     def on_select(self, rfds, wfds, xfds):
 
-        real_rfds = []
         for rfd in rfds:
-            to_fd = self.canonical_fds.get(rfd)
+            to_fd = self.fd_map.get(rfd)
             if to_fd is not None:
-                real_rfds.append(rfd)
                 x = os.read(rfd, 65536)
                 if x:
                     log.log(5, '%d piped %s' % (self.id, x.encode('string-escape')))
                     self.broker.log_output_and_notify(self.id, to_fd, x)
                 else:
                     os.close(rfd)
-                    del self.canonical_fds[rfd]
+                    del self.fd_map[rfd]
 
+        self.proc.poll()
 
-        has_fds = real_rfds
-        has_life = self.proc.is_alive() and not self.finished.is_set()
+        has_fds = self.fd_map
+        has_life = self.proc.returncode is None
 
         if not has_fds and not has_life:
             log.log(5, 'proc %d for task %d joined' % (self.proc.pid, self.id))
@@ -152,11 +158,10 @@ class ProcJob(BaseJob):
         elif not (has_fds and has_life) and (has_fds or has_life):
             log.log(5, 'proc %d for task %d is about to die; only %s' % (self.proc.pid, self.id, 'has fds' if has_fds else 'has life'))
         
-        log.log(5, 'proc %d alive: %s, finished: %s, rfds: %s' % (self.proc.pid, self.proc.is_alive(), self.finished.is_set(), rfds))
+        log.log(5, 'proc %d alive: %s, rfds: %s' % (self.proc.pid, self.proc.returncode is not None, rfds))
 
-    def target(self, o_wfd, e_wfd):
 
-        self.broker.after_fork()
+    def bootstrap(self):
 
         if IS_ROOT:
 
@@ -172,16 +177,15 @@ class ProcJob(BaseJob):
 
         os.chdir(self.task['cwd'])
 
-        # Prep the stdio; close stdin and redirect stdout/err to the parent's
-        # preferred pipes. Everything should clean itself up.
-        os.close(0)
-        # TODO: don't do this when debugging
-        os.dup2(o_wfd, 1)
-        os.dup2(e_wfd, 2)
-        os.close(o_wfd)
-        os.close(e_wfd)
 
-        self.execute()
+def procjob_execute():
+    """Called within the subprocess to actually do the work."""
+    encoded = sys.stdin.read()
+    broker, task = pickle.loads(encoded)
+    job = ProcJob(broker, task)
+    job.bootstrap()
+    job.execute()
+
 
 
 def task_cpus(task):
@@ -299,7 +303,7 @@ class Worker(object):
             if not self.broker.acquire(task['id']):
                 continue
 
-            job = (ProcJob if self.broker.can_fork else ThreadJob)(self, task)
+            job = (ProcJob if self.broker.can_fork else ThreadJob)(self.broker, task)
             job.start()
             self._event_loop.add(job)
 
@@ -320,7 +324,7 @@ class Worker(object):
             active_jobs = [x for x in self._event_loop.active if isinstance(x, BaseJob)]
             if active_jobs:
                 log.log(5, "%d active jobs: %s" % (len(active_jobs), ', '.join(str(job.id) for job in active_jobs)))
-                self._event_loop.process(timeout=1.0)
+                self._event_loop.process(timeout=0.1)
 
 
             # Deal with any jobs that just stopped.
@@ -413,3 +417,4 @@ class Worker(object):
                 continue
 
             yield self.broker.fetch(task['id'])
+
