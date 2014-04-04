@@ -103,21 +103,21 @@ class ProcJob(BaseJob):
 
     def start(self):
 
-        cmd = []
-        if 'KS_DEV_ARGS' in os.environ:
-            cmd.extend(('dev', '--bootstrap'))
-        cmd.extend((
-            self.task.get('interpreter') or sys.executable,
-            '-m', 'aque.workersandbox.thecorner',
-            str(self.id), # so that `top` and `ps` show something more interesting
-        ))
-
-
         o_rfd, o_wfd = os.pipe()
         e_rfd, e_wfd = os.pipe()
 
         # Start the actuall subprocess.
-        if True:
+        if self.task.get('interpreter'):
+            
+            cmd = []
+            if 'KS_DEV_ARGS' in os.environ:
+                cmd.extend(('dev', '--bootstrap'))
+            cmd.extend((
+                self.task['interpreter'],
+                '-m', 'aque.workersandbox.thecorner',
+                str(self.id), # so that `top` and `ps` show something more interesting
+            ))
+
             encoded_package = pickle.dumps((self.broker, self.task))
             self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=o_wfd, stderr=e_wfd, close_fds=True)
             self.proc.stdin.write(encoded_package)
