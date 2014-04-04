@@ -1,23 +1,12 @@
-
-- setproctitle -> https://code.google.com/p/py-setproctitle/
-  for workers and slaves
-
 - write better usage docs
 
 - tasks should enforce host requirements
 
-- lots of logging for the worker
-- task capture does not seem to actually work properly on long-running tasks
+- logging in subprocesses should be put through to a special pipe, or perhaps
+  through a socket of some sort
 
 - is there a way of detecting what the mount point is for various io_paths and
   making sure that it corresponds?
-
-- Broker.capture -> Broker.acquire
-
-- Broker._emit_event(type, *args, **kwargs) and Broker._dispatch_event(type, *args, **kwargs)
-    - immediately dispatches them locally (to self._handle_<event>)
-    - uses postgres' notify feature
-    - ignores events that come back to the same PID
 
 - write a test that makes sure that multiple workers run a given task
   only once
@@ -37,8 +26,9 @@
   - can I set it's name to aque-worker after it has started, or should I
     actually make various aque-* commands?
 
-- brokers should signal when there are new tasks so that the workers can
-  fight over them immediately
+- worker should listen to "task_status.pending" to pick up new tasks
+  - make it take over the event loop, and just bind something meaningless to
+    task_status.pending
 
 - `aque kill <tid>` -> sends an event that the worker hears, and then kills
   the subprocess

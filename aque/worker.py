@@ -2,26 +2,26 @@ import contextlib
 import grp
 import itertools
 import logging
+import multiprocessing
 import os
 import pickle
 import pprint
 import pwd
 import select
+import subprocess
 import sys
 import threading
 import time
 import traceback
-import subprocess
-import multiprocessing
 
 import psutil
 
 from aque.brokers import get_broker
+from aque.eventloop import SelectableEvent, EventLoop, StopSelection
 from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternMissingError
 from aque.futures import Future
 from aque.local import _local
 from aque.utils import decode_callable, parse_bytes, debug
-from aque.eventloop import SelectableEvent, EventLoop, StopSelection
 
 
 log = logging.getLogger(__name__)
@@ -355,8 +355,7 @@ class Worker(object):
             active_jobs = [x for x in self._event_loop.active if isinstance(x, BaseJob)]
             if active_jobs:
                 log.log(5, "%d active jobs: %s" % (len(active_jobs), ', '.join(str(job.id) for job in active_jobs)))
-                self._event_loop.process(timeout=0.1)
-
+                self._event_loop.process(timeout=1.0)
 
             # Deal with any jobs that just stopped.
             job_just_finished = False
