@@ -205,8 +205,7 @@ class Worker(object):
 
     def __init__(self, broker=None, max_cpus=None):
         self.broker = get_broker(broker)
-
-        self._event_loop = EventLoop()
+        self._event_loop = self.broker._event_loop
         self._stopper = threading.Event()
 
     def stop(self):
@@ -291,7 +290,7 @@ class Worker(object):
                 continue
 
             # Don't consider anything we are already working on.
-            if any(task['id'] == job.id for job in self._event_loop.active):
+            if any(task['id'] == job.id for job in self._event_loop.active if isinstance(job, BaseJob)):
                 continue
 
             # TODO: track these so that we don't bother looking at the same
@@ -316,8 +315,18 @@ class Worker(object):
 
     def _run(self, count, wait_for_more):
 
-        self._stopper.clear()
-        while not self._stopper.is_set():
+        try:
+            self._stopper.clear()
+            self._event_loop.stop_thread()
+            while not self._stopper.is_set():
+                count = self._run_inner(count, wait_for_more)
+        except StopIteration:
+            pass
+        finally:
+            log.debug('worker is stopping')
+            self._event_loop.resume_thread()
+
+    def _run_inner(self, count, wait_for_more):
 
             count = self._spawn_jobs(count)
 
@@ -344,9 +353,9 @@ class Worker(object):
                     log.info('waiting for more work...')
                     time.sleep(1)
                 else:
-                    break
+                    raise StopIteration()
 
-        log.debug('worker is stopping')
+            return count
 
     def iter_open_tasks(self):
 
