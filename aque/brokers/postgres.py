@@ -362,7 +362,7 @@ class PostgresBroker(Broker):
 
     def release(self, tid):
         with self._cursor() as cur:
-            cur.execute('UPDATE tasks SET last_active = NULL WHERE id = %s', [tid])
+            cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = %s', [tid])
 
     def _on_heartbeat(self):
         with self._heartbeat_lock:
