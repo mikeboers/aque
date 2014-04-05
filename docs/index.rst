@@ -6,8 +6,8 @@ AQue is a Python package to allow one to define a :abbr:`DAG (Directed Acyclic G
 A :ref:`task <tasks>` is a unit-of-work which can be independantly scheduled, run, and re-run. Tasks may have dependencies which must finish first and whose results can be used later.
 
 
-Getting Started
----------------
+Overview
+--------
 
 .. toctree::
     :maxdepth: 2
@@ -15,17 +15,17 @@ Getting Started
     installation
     getting_started_cli
     getting_started_py
+    tasks
+    patterns
 
 
-Contents
---------
+Python API
+----------
 
 .. toctree::
     :maxdepth: 2
 
-    tasks
     queues
-    patterns
     brokers
     exceptions
     locals

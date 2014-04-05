@@ -1,3 +1,10 @@
+"""aque output -- Fetch (or watch) stdout/stderr of a task.
+
+Fetches output of a task that has already run, and optionally waits for all
+output yet to be generated. Watching terminates when the tasks complete.
+
+"""
+
 import csv
 import os
 import sys
@@ -7,10 +14,10 @@ from aque.commands.main import command, argument
 
 
 @command(
-    argument('-r', '--recursive', action='store_true'),
-    argument('-w', '--watch', action='store_true'),
-    argument('tids', nargs='+', type=int),
-    help='task output',
+    argument('-w', '--watch', action='store_true', help='watch for more output until the task(s) terminate'),
+    argument('tids', nargs='+', type=int, metavar='TID', help='ID(s) of the tasks to get output of'),
+    help='fetch (or watch) stdout/stderr of a task',
+    description=__doc__,
 )
 def output(args):
 
@@ -25,7 +32,7 @@ def output(args):
 
         @args.broker.bind(['task_status.%s' % x for x in args.tids])
         def on_status(tids, status):
-            if status in ('success', 'error'):
+            if status in ('success', 'error', 'killed'):
                 for tid in tids:
                     queue.put((tid, None, None, None))
 

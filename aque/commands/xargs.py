@@ -1,3 +1,10 @@
+"""aque xargs - xargs-like submitter of multiple tasks.
+
+Submits multiple tasks with the same base command, taking the rest of the
+arguments from stdin.
+
+"""
+
 from __future__ import division
 
 import argparse
@@ -8,7 +15,7 @@ import shlex
 
 import psutil
 
-from aque.commands.main import main, command, argument
+from aque.commands.main import main, command, argument, group
 
 
 def grouper(iterable, n, fillvalue=None):
@@ -31,14 +38,26 @@ def tokenize_words(count):
 
 
 @command(
-    argument('-L', '--lines', type=int),
-    argument('-n', '--words', type=int),
-    argument('-P', '--maxprocs', type=int),
-    argument('-c', '--cpus', type=int),
-    argument('-w', '--watch', action='store_true'),
-    argument('-s', '--shell', action='store_true'),
+
+    group('xargs compatibility',
+        argument('-L', '--lines', type=int, metavar='N', help='''how many lines of input to use
+            for arguments of a single task (for compatibility with `xargs -L`)'''),
+        argument('-n', '--words', type=int, metavar='N', help='''how many works of input to use
+            for arguments of a single task (for compatibility with `xargs -n`)'''),
+        argument('-P', '--maxprocs', type=int, metavar='N', help='''how many tasks to run at once
+            (for compatibility with `xargs -P` and exclusive with --cpus)'''),
+    ),
+
+    argument('-c', '--cpus', type=int, help='how many CPUs to use per task'),
+
+    argument('-s', '--shell', action='store_true', help='''the first argument is
+        executed as a shell script, with the rest provided to it as arguments'''),
+    argument('-w', '--watch', action='store_true', help='watch the stdout/stderr of the task as it executes'),
+
+    argument('-v', '--verbose', action='store_true', help='print IDs of all tasks'),
     argument('command', nargs=argparse.REMAINDER),
-    help='schedule a series of commands like xargs',
+    help='xargs-like submitter of multiple tasks',
+    description=__doc__,
 )
 def xargs(args):
 

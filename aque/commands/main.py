@@ -1,3 +1,10 @@
+"""AQue is an asynchronous work queue, and a set of CLI and Python tools to use
+and manage it.
+
+See: `aque <command> --help` for more on individual commands.
+
+"""
+
 import argparse
 import os
 import pkg_resources
@@ -19,6 +26,8 @@ class AliasedSubParsersAction(argparse._SubParsersAction):
 def argument(*args, **kwargs):
     return args, kwargs
 
+def group(title, *args):
+    return title, args
 
 def command(*args, **kwargs):
     def _decorator(func):
@@ -29,26 +38,38 @@ def command(*args, **kwargs):
 
 def main(argv=None):
 
-    parser = argparse.ArgumentParser()
-    parser.register('action', 'parsers', AliasedSubParsersAction)
-    subparsers = parser.add_subparsers(help='sub-commands')
+    parser = argparse.ArgumentParser(
+        prog='aque',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=__doc__,
+    )
 
-    parser.add_argument('--broker', dest='broker_url', default=os.environ.get('AQUE_BROKER'))
-    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.register('action', 'parsers', AliasedSubParsersAction)
+    subparsers = parser.add_subparsers(metavar='COMMAND')
+    parser.add_argument('--broker',
+        dest='broker_url',
+        default=os.environ.get('AQUE_BROKER'),
+        help='URL of broker to use (default: $AQUE_BROKER)',
+    )
 
     funcs = [ep.load() for ep in pkg_resources.iter_entry_points('aque_commands')]
     funcs.sort(key=lambda f: f.__aque_command__[1].get('name', f.__name__))
 
     for func in funcs:
         args, kwargs = func.__aque_command__
-        subparser = subparsers.add_parser(
-            kwargs.get('name', func.__name__),
-            help=kwargs.get('help'),
-            aliases=kwargs.get('aliases', []),
-        )
+        name = kwargs.pop('name', func.__name__)
+        kwargs.setdefault('aliases', [])
+        kwargs.setdefault('formatter_class', argparse.RawDescriptionHelpFormatter)
+        subparser = subparsers.add_parser(name, **kwargs)
         subparser.set_defaults(func=func)
+
         for arg_args, arg_kwargs in args:
-            subparser.add_argument(*arg_args, **arg_kwargs)
+            if isinstance(arg_args, basestring):
+                group = subparser.add_argument_group(arg_args)
+                for arg_args, arg_kwargs in arg_kwargs:
+                    group.add_argument(*arg_args, **arg_kwargs)
+            else:
+                subparser.add_argument(*arg_args, **arg_kwargs)
 
     args = parser.parse_args(argv)
     if not args.func:

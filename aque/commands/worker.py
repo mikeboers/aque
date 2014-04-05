@@ -1,3 +1,10 @@
+"""aque worker - Run a worker which processes the queue.
+
+A worker is responsible for actually running the tasks on the queue, and for
+mananging the CPU, memory, and other resources availible on the machine.
+
+"""
+
 import sys
 
 from aque.commands.main import command, argument
@@ -5,10 +12,11 @@ from aque.worker import Worker
 
 
 @command(
-    argument('-1', '--one', action='store_true'),
-    argument('-2', '--to-end', action='store_true'),
-    argument('-c', '--cpus', type=int),
+    argument('-1', '--one', action='store_true', help='run only a single task'),
+    argument('-2', '--to-end', action='store_true', help='run only until there is nothing pending on the queue'),
+    argument('-c', '--cpus', type=int, metavar='CPU_COUNT', help='how many CPUs to use'),
     help='run a worker',
+    description=__doc__,
 )
 def worker(args):
     worker = Worker(args.broker, max_cpus=args.cpus)
