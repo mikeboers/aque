@@ -1,11 +1,7 @@
-- `aque status` should merge everything into a heirarchy
-  - --flat prevents this
-  - --depth 0 describes how far to go down the heirarchy
-
-- move signal/kill api to the broker
-  broker.signal(tids, signal)
-
 - tasks should enforce host requirements
+  - parse ifconfig via r'inet (addr:)?(\d+\.\d+\.\d+\.\d+)'
+  - parse /etc/hosts looking for all synonyms
+  - be able to match network masks, e.g. 127.0.0.0/24
 
 - logging in subprocesses should be put through to a special pipe, or perhaps
   through a socket of some sort
@@ -14,8 +10,9 @@
     and then don't go further up the chain. This will allow existing logging
     to actually work
 
-- preserve environment; stuff os.environ into task['environ'] ?
-  - `aque submit KEY=value blah blah` env style
+- preserve environment for xargs; it seems really inefficient to do it the
+  same way as for submit as it would be stuffed onto every task. perhaps
+  if isinstance(environ, int) then it can pull the environment from there?
 
 - is there a way of detecting what the mount point is for various io_paths and
   making sure that it corresponds?
@@ -78,11 +75,6 @@
   SOLUTION: only allow functions/classes that can be resolved by name, and
   encode them into our format first
 
-- task['interpreter'] should be able to set which interpreter we use
-  (which is why qbfutures has sandbox.the_corner to work in)
-    - need Broker.to_url to pass via AQUE_BROKER
-
-- aque-xargs should match as much of xargs as we need
 - aque-kill should kill a task
     - `aque-kill -r` would kill all dependencies
 
@@ -94,21 +86,5 @@
     - 'io_hints' is a sequence of paths that may have IO
     - 'rel_duration' is a float relative to other durations of the same priority,
        and we prioritize longer processes of the same priority
-
-- reconsider adding children to the graph. They could be exactly the same as
-  dependencies, except that they inherit from their parent.
-
-  - children should not be under their parent as far as priority is concerned
-    as that will introduce inefficiencies for our IO prioritization
-
-  - it seems the tough problem is mostly determining how to present tasks
-    in the Web UI.
-
-- worker should be able to schedule a listener on the broker for when there
-  are new tasks so that it can immediately wake up
-
-    broker.register_worker(self)
-        - store it in a weakref dict
-    broker will then call worker.wake_for_work() when there is new pending work
 
 - document relationships of queues, brokers, task prototypes, and futures.

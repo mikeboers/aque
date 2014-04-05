@@ -26,7 +26,8 @@ def do_shell_task(task):
         kwargs['stdin'] = subprocess.PIPE
 
     env = os.environ.copy()
-    env.update(kwargs.pop('env', {}))
+    env.update(task.get('environ') or {})
+    
     env['AQUE_TID'] = str(task['id'])
     kwargs['env'] = env
     

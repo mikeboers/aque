@@ -109,7 +109,7 @@ class Broker(object):
         pass
     
 
-    # MID-LEVEL TASK API
+    # MID-LEVEL API
 
     def acquire(self, tid):
         """Capture a single task, and keep a heartbeat running."""
@@ -117,9 +117,6 @@ class Broker(object):
 
     def release(self, tid):
         """Release a single task that we are done with."""
-
-
-    # MID-lEVEL EVENT API
 
     def bind(self, events, callback=None):
         """Schedule a function to be called whenever a given event happens."""

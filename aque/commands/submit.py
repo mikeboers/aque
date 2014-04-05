@@ -41,7 +41,7 @@ def submit(args):
         cmd.insert(1, '-c')
         cmd.insert(3, 'aque-submit')
 
-    options = {}
+    options = {'environ': os.environ}
 
     for k in ('cwd', ):
         v = getattr(args, k, None)
