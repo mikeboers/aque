@@ -8,9 +8,11 @@ import logging
 import os
 import pkg_resources
 import re
+import subprocess
 import sys
 import threading
 import types
+
 
 log = logging.getLogger(__name__)
 
@@ -102,3 +104,40 @@ def parse_bytes(formatted):
     if m:
         return float(m.group(1)) * 1024 ** SI_PREFIXES.index(m.group(2))
 
+
+_mounts = []
+def mounts():
+    """Get list of mounted filesystems, each a tuple of (type, path, flags)."""
+    if not _mounts:
+        raw = subprocess.check_output(['mount'])
+        if sys.platform == 'darwin':
+            _mounts.extend(_parse_darwin_mounts(raw))
+        elif sys.platform.startswith('linux'):
+            _mounts.extend(_parse_linux_mounts(raw))
+        else:
+            log.warning('cannot parse mounts for %s' % sys.platform)
+    return list(_mounts)
+
+def _parse_darwin_mounts(raw):
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = re.match(r'^(.+?) on (/.*?) \(([^,]+)(?:, )?(.*?)\)$', line)
+        if not m:
+            log.warning('could not parse mount line %r' % line)
+            continue
+        device, path, type_, flags = m.groups()
+        yield device, path, type_, frozenset(flags.split(', '))
+
+def _parse_linux_mounts(raw):
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = re.match(r'^(.+?) on (/.*?) type (.+?) \((.+?)\)$', line)
+        if not m:
+            log.warning('could not parse mount line %r' % line)
+            continue
+        device, path, type_, flags = m.groups()
+        yield device, path, type_, frozenset(flags.split(','))
