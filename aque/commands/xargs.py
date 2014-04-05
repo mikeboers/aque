@@ -54,6 +54,8 @@ def tokenize_words(count):
         executed as a shell script, with the rest provided to it as arguments'''),
     argument('-w', '--watch', action='store_true', help='watch the stdout/stderr of the task as it executes'),
 
+    argument('--name', help='the task\'s name (for `aque status`)'),
+
     argument('-v', '--verbose', action='store_true', help='print IDs of all tasks'),
     argument('command', nargs=argparse.REMAINDER),
     help='xargs-like submitter of multiple tasks',
@@ -88,12 +90,22 @@ def xargs(args):
             cmd.insert(3, 'aque-submit')
 
         cmd.extend(t for t in tokens if t is not None)
-        prototypes.append(dict(pattern='shell', args=cmd, cpus=cpus))
+        prototypes.append(dict(
+            pattern='shell',
+            args=cmd,
+            cpus=cpus,
+            name=' '.join(cmd),
+        ))
 
     future_map = args.queue.submit_many(prototypes)
     if args.verbose:
         print '\n'.join(str(tid) for tid in sorted(f.id for f in future_map.itervalues()))
-    future = args.queue.submit_ex(pattern=None, dependencies=future_map.values())
+
+    future = args.queue.submit_ex(
+        pattern=None,
+        name=args.name or 'xargs ' + ' '.join(args.command),
+        dependencies=future_map.values(),
+    )
 
     if args.watch:
         args = ['output', '--watch']

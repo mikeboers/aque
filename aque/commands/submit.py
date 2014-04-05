@@ -23,6 +23,7 @@ from aque.commands.main import main, command, argument
     #argument('--stdout', help='path to write stdout to'),
     #argument('--stderr', help='path to write stderr to'),
 
+    argument('-n', '--name', help='the task\'s name (for `aque status`)'),
     argument('-s', '--shell', action='store_true', help='''the first argument is
         executed as a shell script, with the rest provided to it as arguments'''),
     argument('-w', '--watch', action='store_true', help='watch the stdout/stderr of the task as it executes'),
@@ -40,16 +41,15 @@ def submit(args):
         cmd.insert(1, '-c')
         cmd.insert(3, 'aque-submit')
 
-    kwargs = {
-        'cwd': os.getcwd()
-    }
+    options = {}
 
     for k in ('cwd', ):
         v = getattr(args, k, None)
         if v is not None:
-            kwargs[k] = getattr(args, k)
+            options[k] = getattr(args, k)
 
-    future = args.queue.submit_ex(pattern='shell', args=cmd, kwargs=kwargs)
+    name = args.name or ' '.join(cmd)
+    future = args.queue.submit_ex(pattern='shell', args=cmd, name=name, **options)
 
     if args.watch:
         return main(['output', '--watch', str(future.id)])

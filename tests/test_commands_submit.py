@@ -10,10 +10,10 @@ class TestSubmitCommand(BrokerTestCase):
         tid = int(self_check_output(['submit', 'echo', msg]).strip())
 
         full_human_status = self_check_output(['status'])
-        self.assertSearch(r'\b%d\s+\w+\s+pending' % tid, full_human_status)
+        self.assertSearch(r'\b%d\b[^\n]+pending' % tid, full_human_status)
 
         one_human_status = self_check_output(['status', str(tid)])
-        self.assertSearch(r'\b%d\s+\w+\s+pending' % tid, one_human_status)
+        self.assertSearch(r'\b%d\b[^\n]+pending' % tid, one_human_status)
 
         with override_stdio() as (out, _):
             self_call(['status', '--csv', 'id,status'])
@@ -32,6 +32,6 @@ class TestSubmitCommand(BrokerTestCase):
         self.worker.run_to_end()
 
         one_status = self_check_output(['status', str(tid)])
-        self.assertSearch(r'\b%d\s+\w+\s+success' % tid, one_status)
+        self.assertSearch(r'\b%d\b[^\n]+success' % tid, one_status)
 
         # Unfortunately we can't actually capture this message.

@@ -1,4 +1,9 @@
-- write better usage docs
+- `aque status` should merge everything into a heirarchy
+  - --flat prevents this
+  - --depth 0 describes how far to go down the heirarchy
+
+- move signal/kill api to the broker
+  broker.signal(tids, signal)
 
 - tasks should enforce host requirements
 
@@ -10,6 +15,7 @@
     to actually work
 
 - preserve environment; stuff os.environ into task['environ'] ?
+  - `aque submit KEY=value blah blah` env style
 
 - is there a way of detecting what the mount point is for various io_paths and
   making sure that it corresponds?
@@ -35,12 +41,6 @@
 - worker should listen to "task_status.pending" to pick up new tasks
   - make it take over the event loop, and just bind something meaningless to
     task_status.pending
-
-- `aque kill <tid>` -> sends an event that the worker hears, and then kills
-  the subprocess
-
-- broker should have a standard event listening interface. Take a look at the
-  blinker API and see if we should replicate that with Postgres.
 
 - add stdin, stdout, stderr, but should I also have stdin_value,
   somehow encode that into the same field, or just don't have that capability?
