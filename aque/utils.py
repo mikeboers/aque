@@ -153,31 +153,19 @@ def _parse_linux_mounts(raw):
         yield Mount(device, path, type_, frozenset(flags.split(',')))
 
 
-def get_mount(path):
+def get_mount(path, _mounts=None):
     """Get the mount corresponding to the given path."""
     path = os.path.abspath(path)
-    for mount in sorted(mounts(), key=lambda m: len(m.path), reverse=True):
-        if path.startswith(mount.path) and path[len(mount.path):len(mount.path)+1] in ('/', ''):
+    for mount in sorted(mounts() if _mounts is None else _mounts, key=lambda m: len(m.path), reverse=True):
+        if path.startswith(mount.path) and (mount.path.endswith('/') or path[len(mount.path):len(mount.path)+1] in ('/', '')):
             return mount
 
 
-def magic_hints(args):
-    """Given a list of arguments, return those which are files, and sum their size."""
-    io_paths = []
-    total_bytes = None
-
+def paths_from_args(args):
+    res = []
     for arg in args:
         path = os.path.abspath(arg)
-
-        try:
-            stat = os.stat(path)
-        except OSError as e:
-            if e.errno != errno.ENOENT:
-                raise
-            continue
-
-        io_paths.append(path)
-        total_bytes = (total_bytes or 0) + stat.st_size
-
-    return io_paths, total_bytes
+        if os.path.exists(path):
+            res.append(path)
+    return res
 

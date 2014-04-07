@@ -14,6 +14,7 @@ import os
 import sys
 
 from aque.commands.main import main, command, argument
+from aque import utils
 
 
 @command(
@@ -48,7 +49,7 @@ def submit(args):
         if v is not None:
             options[k] = getattr(args, k)
 
-    options.setdefault('io_paths', [p for p in cmd if os.path.exists(p)])
+    options.setdefault('io_paths', utils.paths_from_args(cmd))
 
     name = args.name or ' '.join(cmd)
     future = args.queue.submit_ex(pattern='shell', args=cmd, name=name, **options)

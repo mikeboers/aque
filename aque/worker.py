@@ -22,7 +22,7 @@ from aque.eventloop import SelectableEvent, EventLoop, StopSelection
 from aque.exceptions import DependencyFailedError, DependencyResolutionError, PatternMissingError
 from aque.futures import Future
 from aque.local import _local
-from aque.utils import decode_callable, parse_bytes, debug
+from aque.utils import decode_callable, parse_bytes, debug, get_mount
 
 
 log = logging.getLogger(__name__)
@@ -410,19 +410,19 @@ class Worker(object):
         # the files being manipulated.
         fs_scales = []
         fs_weight = 0
-        for path in task.get('io_paths', ()):
+        for path in task.get('io_paths') or ():
             try:
                 stat = os.stat(path)
             except OSError as e:
                 continue
-            mount = utils.get_mount(path)
+            mount = get_mount(path)
             fs_scales.append({
                 'nfs4': 0.75,
             }.get(mount and mount.type, 1.0) * stat.st_size)
             fs_weight += stat.st_size
         fs_scale = sum(fs_scales) / fs_weight if fs_weight else 1.0
 
-        log.debug('FS scale for %d is %.3f' % (task['id'], fs_scale))
+        log.debug('filesystem priority scale for %d is %.3f' % (task['id'], fs_scale))
         
         return (
 
@@ -442,7 +442,7 @@ class Worker(object):
 
     def iter_open_tasks(self):
 
-        pending_tasks = list(self.broker.search({'status': 'pending'}, ['id', 'status', 'dependencies']))
+        pending_tasks = list(self.broker.search({'status': 'pending'}, ['id', 'status', 'dependencies', 'io_paths', 'duration']))
 
         task_cache = dict((t['id'], t) for t in pending_tasks)
         task_priorities = {}

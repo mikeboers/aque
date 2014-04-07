@@ -57,3 +57,20 @@ proc on /proc type proc (rw,noexec,nosuid,nodev)
         self.assertEqual(mounts[2], ('/dev/sdb', '/Volumes/k1r1', 'xfs', frozenset(('rw', 'noatime', 'filestreams', 'inode64'))))
         self.assertEqual(mounts[3], ('10.0.0.222:/Volumes/k2r3', '/Volumes/k2r3', 'nfs4', frozenset(('rw', 'rsize=131072', 'wsize=131072', 'addr=10.0.0.222', 'clientaddr=10.0.0.221'))))
 
+    def test_mount_picking(self):
+
+        root = Mount('/dev/sda', '/', 'ext4', set())
+        proc = Mount('proc', '/proc', 'proc', set())
+        local = Mount('/dev/sdb', '/Volumes/local', 'xfs', set())
+        remote = Mount('10.0.0.1:/Volumes/remote', '/Volumes/remote', 'nfs4', set())
+        mounts = [root, proc, local, remote]
+
+        self.assertIs(root, utils.get_mount('/', mounts))
+        self.assertIs(root, utils.get_mount('/home/me', mounts))
+        self.assertIs(proc, utils.get_mount('/proc/self/fd', mounts))
+        self.assertIs(local, utils.get_mount('/Volumes/local', mounts))
+        self.assertIs(local, utils.get_mount('/Volumes/local/lower', mounts))
+        self.assertIs(remote, utils.get_mount('/Volumes/remote', mounts))
+        self.assertIs(remote, utils.get_mount('/Volumes/remote/lower', mounts))
+
+

@@ -16,6 +16,7 @@ import shlex
 import psutil
 
 from aque.commands.main import main, command, argument, group
+from aque import utils
 
 
 def grouper(iterable, n, fillvalue=None):
@@ -99,7 +100,7 @@ def xargs(args):
             name=' '.join(cmd),
 
             # Magic prioritization!
-            io_paths=[p for p in cmd if os.path.exists(p)],
+            io_paths=utils.paths_from_args(cmd),
 
         ))
 
