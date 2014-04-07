@@ -416,13 +416,16 @@ class Worker(object):
             except OSError as e:
                 continue
             mount = get_mount(path)
+            log.log(5, 'mount for %r is %r' % (path, mount))
             fs_scales.append({
+                'devfs': 0.1,
+                'proc': 0.1,
                 'nfs4': 0.75,
             }.get(mount and mount.type, 1.0) * stat.st_size)
             fs_weight += stat.st_size
         fs_scale = sum(fs_scales) / fs_weight if fs_weight else 1.0
 
-        log.debug('filesystem priority scale for %d is %.3f' % (task['id'], fs_scale))
+        log.debug('filesystem priority scale for %d is %.3f (%r / %d)' % (task['id'], fs_scale, fs_scales, fs_weight))
         
         return (
 
