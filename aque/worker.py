@@ -404,6 +404,42 @@ class Worker(object):
 
             return count
 
+    def calculate_priority(self, task):
+
+        # Relative scales for different filesystems, weighted by the size of
+        # the files being manipulated.
+        fs_scales = []
+        fs_weight = 0
+        for path in task.get('io_paths', ()):
+            try:
+                stat = os.stat(path)
+            except OSError as e:
+                continue
+            mount = utils.get_mount(path)
+            fs_scales.append({
+                'nfs4': 0.75,
+            }.get(mount and mount.type, 1.0) * stat.st_size)
+            fs_weight += stat.st_size
+        fs_scale = sum(fs_scales) / fs_weight if fs_weight else 1.0
+
+        log.debug('FS scale for %d is %.3f' % (task['id'], fs_scale))
+        
+        return (
+
+            # Higher priority values come first.
+            -task.get('priority', 1000),
+
+            # Faster file IO comes first.
+            fs_scale,
+
+            # Longer tasks come first (for scheduling benifits).
+            -(task.get('duration') or 0),
+
+            # A reasonable-ish fallback.
+            task['id'],
+
+        )
+
     def iter_open_tasks(self):
 
         pending_tasks = list(self.broker.search({'status': 'pending'}, ['id', 'status', 'dependencies']))
@@ -427,11 +463,8 @@ class Worker(object):
             # Create dynamic priorities for every task, and sort by them.
             for task in pending_tasks:
                 if task['id'] not in task_priorities:
-                    ### TODO: Scale by duration, relative IO speeds, etc..
-                    task_priorities[task['id']] = (
-                        -task.get('priority', 1000),
-                        task['id'],
-                    )
+                    task_priorities[task['id']] = self.calculate_priority(task)
+
             pending_tasks.sort(key=lambda task: task_priorities[task['id']])
             task = pending_tasks.pop(0)
 

@@ -48,6 +48,8 @@ def submit(args):
         if v is not None:
             options[k] = getattr(args, k)
 
+    options.setdefault('io_paths', [p for p in cmd if os.path.exists(p)])
+
     name = args.name or ' '.join(cmd)
     future = args.queue.submit_ex(pattern='shell', args=cmd, name=name, **options)
 

@@ -90,11 +90,17 @@ def xargs(args):
             cmd.insert(3, 'aque-submit')
 
         cmd.extend(t for t in tokens if t is not None)
+
         prototypes.append(dict(
+
             pattern='shell',
             args=cmd,
             cpus=cpus,
             name=' '.join(cmd),
+
+            # Magic prioritization!
+            io_paths=[p for p in cmd if os.path.exists(p)],
+
         ))
 
     future_map = args.queue.submit_many(prototypes)

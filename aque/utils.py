@@ -1,8 +1,9 @@
 from __future__ import division
 
-from collections import Callable
+from collections import Callable, namedtuple
 from cPickle import PickleError
 import cPickle as pickle
+import errno
 import json
 import logging
 import os
@@ -106,8 +107,15 @@ def parse_bytes(formatted):
 
 
 _mounts = []
+Mount = namedtuple('Mount', ['device', 'path', 'type', 'flags'])
+
+
 def mounts():
-    """Get list of mounted filesystems, each a tuple of (type, path, flags)."""
+    """Get list of mounted filesystems.
+
+    Each mount is a namedtuple with fields: device, path, type, and flags.
+
+    """
     if not _mounts:
         raw = subprocess.check_output(['mount'])
         if sys.platform == 'darwin':
@@ -117,6 +125,7 @@ def mounts():
         else:
             log.warning('cannot parse mounts for %s' % sys.platform)
     return list(_mounts)
+
 
 def _parse_darwin_mounts(raw):
     for line in raw.splitlines():
@@ -128,7 +137,8 @@ def _parse_darwin_mounts(raw):
             log.warning('could not parse mount line %r' % line)
             continue
         device, path, type_, flags = m.groups()
-        yield device, path, type_, frozenset(flags.split(', '))
+        yield Mount(device, path, type_, frozenset(flags.split(', ')))
+
 
 def _parse_linux_mounts(raw):
     for line in raw.splitlines():
@@ -140,4 +150,34 @@ def _parse_linux_mounts(raw):
             log.warning('could not parse mount line %r' % line)
             continue
         device, path, type_, flags = m.groups()
-        yield device, path, type_, frozenset(flags.split(','))
+        yield Mount(device, path, type_, frozenset(flags.split(',')))
+
+
+def get_mount(path):
+    """Get the mount corresponding to the given path."""
+    path = os.path.abspath(path)
+    for mount in sorted(mounts(), key=lambda m: len(m.path), reverse=True):
+        if path.startswith(mount.path) and path[len(mount.path):len(mount.path)+1] in ('/', ''):
+            return mount
+
+
+def magic_hints(args):
+    """Given a list of arguments, return those which are files, and sum their size."""
+    io_paths = []
+    total_bytes = None
+
+    for arg in args:
+        path = os.path.abspath(arg)
+
+        try:
+            stat = os.stat(path)
+        except OSError as e:
+            if e.errno != errno.ENOENT:
+                raise
+            continue
+
+        io_paths.append(path)
+        total_bytes = (total_bytes or 0) + stat.st_size
+
+    return io_paths, total_bytes
+
