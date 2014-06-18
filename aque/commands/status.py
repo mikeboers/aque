@@ -72,7 +72,7 @@ def status(args):
                 top_level_by_id.pop(tid, None)
             task['dependencies'] = [tasks_by_id.get(tid, tid) for tid in sorted(dep_ids)]
 
-            tasks = sorted(top_level_by_id.itervalues(), key=lambda t: t['id'])
+        tasks = sorted(top_level_by_id.itervalues(), key=lambda t: t['id'])
 
     if args.csv:
         fields = [f.strip() for f in args.csv.split(',')]
