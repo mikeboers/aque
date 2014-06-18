@@ -49,7 +49,6 @@ def tokenize_words(count):
             (for compatibility with `xargs -P` and exclusive with --cpus)'''),
     ),
 
-    argument('-c', '--cpus', type=int, help='how many CPUs to use per task'),
 
     argument('-s', '--shell', action='store_true', help='''the first argument is
         executed as a shell script, with the rest provided to it as arguments'''),
@@ -57,6 +56,7 @@ def tokenize_words(count):
 
     argument('--name', help='the task\'s name (for `aque status`)'),
 
+    argument('-c', '--cpus', type=int, help='how many CPUs to use per task'),
     argument('--host', help='the host(s) to run on'),
     argument('--platform', help='the platform to run on'),
 

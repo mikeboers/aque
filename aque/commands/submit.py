@@ -26,6 +26,7 @@ from aque import utils
 
     argument('-n', '--name', help='the task\'s name (for `aque status`)'),
 
+    argument('-c', '--cpus', type=int, help='how many CPUs to use per task'),
     argument('--host', help='the host(s) to run on'),
     argument('--platform', help='the platform to run on'),
 
@@ -48,7 +49,7 @@ def submit(args):
 
     options = {'environ': os.environ}
 
-    for k in ('cwd', 'host', 'platform'):
+    for k in ('cpus', 'cwd', 'host', 'platform'):
         v = getattr(args, k, None)
         if v is not None:
             options[k] = getattr(args, k)
