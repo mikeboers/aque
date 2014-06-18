@@ -25,6 +25,10 @@ from aque import utils
     #argument('--stderr', help='path to write stderr to'),
 
     argument('-n', '--name', help='the task\'s name (for `aque status`)'),
+
+    argument('--host', help='the host(s) to run on'),
+    argument('--platform', help='the platform to run on'),
+
     argument('-s', '--shell', action='store_true', help='''the first argument is
         executed as a shell script, with the rest provided to it as arguments'''),
     argument('-w', '--watch', action='store_true', help='watch the stdout/stderr of the task as it executes'),
@@ -44,7 +48,7 @@ def submit(args):
 
     options = {'environ': os.environ}
 
-    for k in ('cwd', ):
+    for k in ('cwd', 'host', 'platform'):
         v = getattr(args, k, None)
         if v is not None:
             options[k] = getattr(args, k)

@@ -57,6 +57,9 @@ def tokenize_words(count):
 
     argument('--name', help='the task\'s name (for `aque status`)'),
 
+    argument('--host', help='the host(s) to run on'),
+    argument('--platform', help='the platform to run on'),
+
     argument('-v', '--verbose', action='store_true', help='print IDs of all tasks'),
     argument('command', nargs=argparse.REMAINDER),
     help='xargs-like submitter of multiple tasks',
@@ -81,6 +84,12 @@ def xargs(args):
         cpus = None
 
 
+    options = {'environ': os.environ}
+    for k in ('cwd', 'host', 'platform'):
+        v = getattr(args, k, None)
+        if v is not None:
+            options[k] = getattr(args, k)
+
     prototypes = []
     for tokens in token_iter:
 
@@ -92,8 +101,8 @@ def xargs(args):
 
         cmd.extend(t for t in tokens if t is not None)
 
-        prototypes.append(dict(
-
+        prototype = options.copy()
+        prototype.update(
             pattern='shell',
             args=cmd,
             cpus=cpus,
@@ -101,8 +110,9 @@ def xargs(args):
 
             # Magic prioritization!
             io_paths=utils.paths_from_args(cmd),
+        )
 
-        ))
+        prototypes.append(prototype)
 
     future_map = args.queue.submit_many(prototypes)
     if args.verbose:
