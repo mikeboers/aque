@@ -241,8 +241,13 @@ def task_cpus(task):
     cpus = task.get('cpus')
     if cpus is None:
         return 1.0
-    else:
-        return float(cpus)
+    cpus = float(cpus)
+
+    # HACK: negative cpus are fractions of the total.
+    if cpus < 0:
+        cpus = CPU_COUNT / -cpus
+
+    return cpus
 
 def task_memory(task):
     memory = task.get('memory')
