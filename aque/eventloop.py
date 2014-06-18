@@ -1,8 +1,9 @@
+import errno
 import logging
 import os
 import threading
 import time
-from select import select
+from select import select, error as SelectError
 from Queue import Empty
 
 
@@ -131,7 +132,16 @@ class EventLoop(object):
         if sum(map(len, to_select)) == 1 and not self.timers:
             return
 
-        selected = select(to_select[0], to_select[1], to_select[2], timeout)
+        try:
+            selected = select(to_select[0], to_select[1], to_select[2], timeout)
+
+        # This tends to happen a LOT.
+        except SelectError as e:
+            if e.args[0] != errno.EINTR:
+                raise
+            log.debug('select was interupted')
+            selected = ((), (), ())
+
         selected = [set(x) for x in selected]
 
 

@@ -5,6 +5,8 @@ mananging the CPU, memory, and other resources availible on the machine.
 
 """
 
+import logging
+import signal
 import sys
 
 from aque.commands.main import command, argument
@@ -19,6 +21,12 @@ from aque.worker import Worker
     description=__doc__,
 )
 def worker(args):
+
+    def on_hup(signum, frame):
+        logging.getLogger(__name__).info('HUP! Stopping worker from taking more work.')
+        worker.stop()
+    signal.signal(signal.SIGHUP, on_hup)
+
     worker = Worker(args.broker, max_cpus=args.cpus)
     try:
         if args.one:

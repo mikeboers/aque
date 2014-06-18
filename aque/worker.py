@@ -389,10 +389,18 @@ class Worker(object):
 
     def _run(self, count, wait_for_more):
         try:
+
             self._stopper.clear()
             self._event_loop.stop_thread()
+
+            # The main loop.
             while not self._stopper.is_set():
                 count = self._run_inner(count, wait_for_more)
+
+            # Finish what we were doing.
+            while any(isinstance(x, BaseJob) for x in self._event_loop.active):
+                self._run_inner(-1, False)
+
         except StopIteration:
             pass
         finally:
