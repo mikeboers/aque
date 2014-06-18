@@ -296,6 +296,16 @@ class Worker(object):
         if task_memory(task) > memory:
             return False
 
+        # If there is a CWD, and we don't see it, then we can't run it.
+        cwd = task.get('cwd')
+        if cwd is not None:
+            if not os.path.exists(cwd):
+                log.debug('skipping %d because CWD does not exist' % task['id'])
+                return False
+            if not os.access(cwd, os.R_OK | os.X_OK):
+                log.debug('skipping %d because CWD is not accessible' % task['id'])
+                return False
+
         return True
 
     def _can_ever_satisfy_requirements(self, task):
