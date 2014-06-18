@@ -1,4 +1,5 @@
 import contextlib
+import fnmatch
 import grp
 import itertools
 import logging
@@ -8,6 +9,7 @@ import pickle
 import pprint
 import pwd
 import select
+import socket
 import subprocess
 import sys
 import threading
@@ -32,7 +34,7 @@ CPU_COUNT = psutil.cpu_count()
 MEM_TOTAL = psutil.virtual_memory().total
 IS_ROOT = not os.getuid()
 LOGIN = pwd.getpwuid(os.getuid()).pw_name
-
+HOSTNAME = socket.gethostname().lower()
 
 
 
@@ -298,6 +300,24 @@ class Worker(object):
 
     def _can_ever_satisfy_requirements(self, task):
 
+        # Check the host globs.
+        host_patterns = task.get('host')
+        if host_patterns:
+            if isinstance(host_patterns, basestring):
+                host_patterns = [h.strip() for h in host_patterns.split(',')]
+            for host in host_patterns:
+                negate = host.startswith('!')
+                host = host[1:] if negate else host
+                passes = fnmatch.fnmatch(HOSTNAME, host.lower())
+                if passes:
+                    if negate:
+                        log.debug('rejecting %d due to mismatched host' % task['id'])
+                        return False
+                    else:
+                        break
+            else:
+                return False
+
         # If the worker is not root or unable to setuid, then we can only do
         # jobs for our own user.
         if (not IS_ROOT or not self.broker.can_fork) and LOGIN != task['user']:
@@ -315,7 +335,7 @@ class Worker(object):
             log.debug('rejecting %d due to unknown user' % task['id'])
             return False
 
-        if task.get('platform') and task['platform'] != sys.platform:
+        if task.get('platform') and task['platform'].lower() != sys.platform.lower():
             log.debug('rejecting %d due to mismatched platform' % task['id'])
             return False
 
