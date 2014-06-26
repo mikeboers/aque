@@ -34,6 +34,7 @@ setup(
             'kill = aque.commands.kill:kill',
             'init = aque.commands.init:init',
             'output = aque.commands.output:output',
+            'retry = aque.commands.retry:retry',
             'rm = aque.commands.rm:rm',
             'status = aque.commands.status:status',
             'submit = aque.commands.submit:submit',
