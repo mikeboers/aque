@@ -263,6 +263,7 @@ class Worker(object):
         self._event_loop = self.broker._event_loop
         self._stopper = threading.Event()
         self.broker.bind('task_status.pending', lambda *args, **kwargs: None)
+        self.use_io_hints = False
 
     def stop(self):
         self._stopper.set()
@@ -447,17 +448,22 @@ class Worker(object):
 
             return count
 
-    def calculate_priority(self, task):
+    def calculate_fs_priority(self, task):
+
+        if not self.use_io_hints:
+            return 1.0
 
         # Relative scales for different filesystems, weighted by the size of
         # the files being manipulated.
         fs_scales = []
         fs_weight = 0
         for path in task.get('io_paths') or ():
+            
             try:
                 stat = os.stat(path)
             except OSError as e:
                 continue
+
             mount = get_mount(path)
             log.log(5, 'mount for %r is %r' % (path, mount))
             fs_scales.append({
@@ -466,17 +472,21 @@ class Worker(object):
                 'nfs4': 0.75,
             }.get(mount and mount.type, 1.0) * stat.st_size)
             fs_weight += stat.st_size
-        fs_scale = sum(fs_scales) / fs_weight if fs_weight else 1.0
 
+        fs_scale = sum(fs_scales) / fs_weight if fs_weight else 1.0
         log.debug('filesystem priority scale for %d is %.3f (%r / %d)' % (task['id'], fs_scale, fs_scales, fs_weight))
-        
+
+        return fs_scale
+
+    def calculate_priority(self, task):
+
         return (
 
             # Higher priority values come first.
             -task.get('priority', 1000),
 
             # Faster file IO comes first.
-            fs_scale,
+            self.calculate_fs_priority(task),
 
             # Longer tasks come first (for scheduling benifits).
             -(task.get('duration') or 0),
