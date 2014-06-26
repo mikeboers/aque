@@ -6,6 +6,7 @@ See: `aque <command> --help` for more on individual commands.
 """
 
 import argparse
+import cProfile
 import os
 import pkg_resources
 
@@ -52,6 +53,8 @@ def main(argv=None):
         help='URL of broker to use (default: $AQUE_BROKER)',
     )
 
+    parser.add_argument('--profile')
+
     funcs = [ep.load() for ep in pkg_resources.iter_entry_points('aque_commands')]
     funcs.sort(key=lambda f: f.__aque_command__[1].get('name', f.__name__))
 
@@ -80,7 +83,10 @@ def main(argv=None):
     args.queue = Queue(args.broker)
     
     try:
-        res = args.func(args) or 0
+        if args.profile:
+            res = cProfile.runctx('args.func(args) or 0', globals(), locals(), args.profile)
+        else:
+            res = args.func(args) or 0
     finally:
         args.broker.close()
 
