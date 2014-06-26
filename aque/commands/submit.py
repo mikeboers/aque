@@ -25,6 +25,7 @@ from aque import utils
     #argument('--stderr', help='path to write stderr to'),
 
     argument('-n', '--name', help='the task\'s name (for `aque status`)'),
+    argument('-p', '--priority', type=int, help='higher ones go first'),
 
     argument('-c', '--cpus', type=int, help='how many CPUs to use per task'),
     argument('--host', help='the host(s) to run on'),
@@ -49,7 +50,7 @@ def submit(args):
 
     options = {'environ': os.environ}
 
-    for k in ('cpus', 'cwd', 'host', 'platform'):
+    for k in ('cpus', 'cwd', 'host', 'platform', 'priority'):
         v = getattr(args, k, None)
         if v is not None:
             options[k] = getattr(args, k)

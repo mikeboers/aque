@@ -55,6 +55,7 @@ def tokenize_words(count):
     argument('-w', '--watch', action='store_true', help='watch the stdout/stderr of the task as it executes'),
 
     argument('--name', help='the task\'s name (for `aque status`)'),
+    argument('-p', '--priority', type=int, help='higher ones go first'),
 
     argument('-c', '--cpus', type=int, help='how many CPUs to use per task'),
     argument('--host', help='the host(s) to run on'),
@@ -85,7 +86,7 @@ def xargs(args):
 
 
     options = {'environ': os.environ}
-    for k in ('cwd', 'host', 'platform'):
+    for k in ('cwd', 'host', 'platform', 'priority'):
         v = getattr(args, k, None)
         if v is not None:
             options[k] = getattr(args, k)
