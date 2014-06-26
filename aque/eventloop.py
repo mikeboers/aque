@@ -150,7 +150,6 @@ class EventLoop(object):
         # triggered several times since it was run last.
         self._last_time = current_time = time.time() - self._zero_time
         for next_tick, func in timers:
-            # print current_time, next_tick, func
             if current_time >= next_tick:
                 try:
                     func()

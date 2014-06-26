@@ -19,6 +19,9 @@ import aque.utils as utils
 from aque.brokers.base import Broker
 
 
+ACTIVE_TIMEOUT = 31
+HEARTBEAT_INTERVAL = 15
+
 log = logging.getLogger(__name__)
 
 
@@ -118,8 +121,8 @@ class PostgresBroker(Broker):
 
         # For acquired task heartbeats.
         self._heartbeat_lock = threading.Lock()
-        self._captured_tids = []
-        self._event_loop.add_timer(15, self._on_heartbeat)
+        self._acquired_tids = set()
+        self._event_loop.add_timer(HEARTBEAT_INTERVAL, self._on_heartbeat)
 
         # For notifications.
         self._notify_conn = None
@@ -352,23 +355,29 @@ class PostgresBroker(Broker):
             current_time = next(cur)[0]
 
             age = (current_time - last_active).total_seconds() if last_active else None
-            if age is not None and age <= 30:
+            if age is not None and age <= ACTIVE_TIMEOUT:
                 log.debug('capturing task %d failed; currently %ss old' % (tid, age))
                 return
 
             cur.execute('UPDATE tasks SET first_active = %s, last_active = %s WHERE id = %s', [current_time, current_time, tid])
 
+            # Setup the heartbeat.
+            self._acquired_tids.add(tid) 
+
         return True
 
     def release(self, tid):
+        self._acquired_tids.remove(tid)
         with self._cursor() as cur:
             cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = %s', [tid])
 
     def _on_heartbeat(self):
         with self._heartbeat_lock:
-            if self._captured_tids:
+            if self._acquired_tids:
+                tids = list(self._acquired_tids)
+                log.log(5, 'asserting ownership of %s' % tids)
                 with self._cursor() as cur:
-                    cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = ANY(%s)', [list(self._captured_tids)])
+                    cur.execute('UPDATE tasks SET last_active = localtimestamp WHERE id = ANY(%s)', [tids])
 
     def to_select(self):
 
