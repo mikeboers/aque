@@ -15,6 +15,7 @@ from aque.commands.main import command, argument
 
 @command(
     argument('-w', '--watch', action='store_true', help='watch for more output until the task(s) terminate'),
+    argument('-f', '--format', default='{data}'),
     argument('tids', nargs='+', type=int, metavar='TID', help='ID(s) of the tasks to get output of'),
     help='fetch (or watch) stdout/stderr of a task',
     description=__doc__,
@@ -27,8 +28,8 @@ def output(args):
         queue = Queue()
 
         @args.broker.bind(['output_log.%d' % x for x in args.tids])
-        def on_log(tid, fd, offset, content):
-            queue.put((tid, fd, offset, content))
+        def on_log(tid, fd, offset, data):
+            queue.put((tid, fd, offset, data))
 
         @args.broker.bind(['task_status.%s' % x for x in args.tids])
         def on_status(tids, status):
@@ -44,19 +45,19 @@ def output(args):
 
         queue.put((None, None, None, None))
 
-    max_offsets = {1: -1, 2: -1}
+    max_offsets = dict((tid, {1: -1, 2: -1}) for tid in args.tids)
 
-    for tid, ctime, fd, offset, content in args.broker.get_output(args.tids):
+    for tid, ctime, fd, offset, data in args.broker.get_output(args.tids):
         stream = {1: sys.stdout, 2: sys.stderr}.get(fd)
         if stream:
-            max_offsets[fd] = max(max_offsets[fd], offset)
-            stream.write(content)
+            max_offsets[tid][fd] = max(max_offsets[tid][fd], offset)
+            stream.write(args.format.format(**locals()))
             stream.flush()
 
     if args.watch:
         while watching:
 
-            tid, fd, offset, content = queue.get()
+            tid, fd, offset, data = queue.get()
             if fd is None:
                 try:
                     watching.remove(tid)
@@ -67,12 +68,12 @@ def output(args):
             stream = {1: sys.stdout, 2: sys.stderr}.get(fd)
             if stream:
 
-                if offset <= max_offsets[fd]:
+                if offset <= max_offsets[tid][fd]:
                     continue
                 else:
-                    max_offsets[fd] = offset
+                    max_offsets[tid][fd] = offset
 
-                stream.write(content)
+                stream.write(args.format.format(**locals()))
                 stream.flush()
 
 
