@@ -29,7 +29,7 @@ def debug(msg):
 # fix some known issues. The big one that we are facing is stdlib exceptions
 # that have required arguments, don't set them to `args`, and don't re-implement
 # __reduce__.
-class SafeUnpickler(pickle.Unpickler):
+class _PatchedUnpickler(pickle.Unpickler):
 
     dispatch = pickle.Unpickler.dispatch.copy()
 
@@ -48,19 +48,19 @@ class SafeUnpickler(pickle.Unpickler):
 
 def safe_unpickle(input_):
     try:
-        
+
         try:
             return cPickle.loads(str(input_))
         except TypeError as e:
 
             # The cPickle exception gives us the function and the arguments
             # that it called it with. If this seems to match the patterns that
-            # the SafeUnpickler can deal with, then let it try.
+            # the patched unpickler can deal with, then let it try.
             #
             # When an exception that does not set args is restored, we get:
             # TypeError('__init__() takes exactly 2 arguments (1 given)', <class '__main__.MyError'>, ())
             if len(e.args) == 3 and e.args[0].startswith('__init__()') and issubclass(e.args[1], BaseException) and not e.args[2]:
-                return SafeUnpickler(StringIO(str(input_))).load()
+                return _PatchedUnpickler(StringIO(str(input_))).load()
             else:
                 raise
 
