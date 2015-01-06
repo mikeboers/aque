@@ -1,4 +1,11 @@
+- killing the worker should also kill the job
+
+- `aque output -w` doesn't work for multiple tasks
+
+- notify connection seems to have SSL reset after ~2GB of data flows through it, and has the connection reset. Be wary of this, and work around it.
+
 - tasks should enforce host requirements
+  √ socket.gethostname()
   - parse ifconfig via r'inet (addr:)?(\d+\.\d+\.\d+\.\d+)'
   - parse /etc/hosts looking for all synonyms
   - be able to match network masks, e.g. 127.0.0.0/24
